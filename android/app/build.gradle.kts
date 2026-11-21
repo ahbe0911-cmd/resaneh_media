@@ -19,7 +19,7 @@ val configuredReleaseSigning = signingKeys.all {
 
 android {
     namespace = "com.resaneh.mediahub"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     buildFeatures {
