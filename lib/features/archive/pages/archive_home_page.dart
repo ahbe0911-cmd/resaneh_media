@@ -218,22 +218,9 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
         toolbarHeight: 62,
         titleSpacing: 15,
         title: Text(widget.config.appName,
+          maxLines: 1, overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
         actions: [
-          IconButton(
-            tooltip: 'جستجو',
-            onPressed: _openSearch,
-            icon: const Icon(Icons.search_rounded),
-          ),
-          IconButton(
-            tooltip: 'فیلتر فایل‌ها',
-            onPressed: _openFilters,
-            icon: Badge(
-              isLabelVisible: state.selectedType != null,
-              smallSize: 7,
-              child: const Icon(Icons.tune_rounded),
-            ),
-          ),
           TextButton.icon(
             onPressed: _openClipbox,
             icon: const Icon(Icons.content_paste_rounded, size: 19),
@@ -267,6 +254,26 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
                   child: Text('آرشیو فایل‌ها',
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w800)),
+                ),
+                IconButton(
+                  tooltip: 'جستجو',
+                  onPressed: _openSearch,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 42, height: 40),
+                  icon: const Icon(Icons.search_rounded, size: 22),
+                ),
+                IconButton(
+                  tooltip: 'فیلتر فایل‌ها',
+                  onPressed: _openFilters,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints.tightFor(
+                    width: 42, height: 40),
+                  icon: Badge(
+                    isLabelVisible: state.selectedType != null,
+                    smallSize: 7,
+                    child: const Icon(Icons.tune_rounded, size: 21),
+                  ),
                 ),
                 Icon(Icons.calendar_month_outlined, size: 15,
                   color: theme.colorScheme.onSurfaceVariant),
