@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../../app/flavor_config.dart';
 import '../../../core/utils/file_classifier.dart';
+import '../../../core/utils/jalali_formatter.dart';
 import '../../../data/models/media_item.dart';
 import '../../../providers/archive_provider.dart';
 import '../../../providers/settings_provider.dart';
@@ -38,7 +39,6 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
   late final IncomingFileService _incoming;
   late final MediaActionService _mediaActions;
   late final ShareIntentService _shareIntent;
-  late final TextEditingController _search;
   late final ScrollController _scroll;
   bool _picking = false;
 
@@ -49,7 +49,6 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
     _vault = context.read<VaultService>();
     _incoming = context.read<IncomingFileService>();
     _mediaActions = context.read<MediaActionService>();
-    _search = TextEditingController();
     _scroll = ScrollController()..addListener(_onScroll);
     _shareIntent = ShareIntentService(
       files: _incoming,
@@ -68,7 +67,6 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
   void dispose() {
     unawaited(_shareIntent.dispose());
     _scroll.dispose();
-    _search.dispose();
     super.dispose();
   }
 
@@ -217,67 +215,104 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.config.appName),
+        toolbarHeight: 62,
+        titleSpacing: 15,
+        title: Text(widget.config.appName,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
         actions: [
+          IconButton(
+            tooltip: 'جستجو',
+            onPressed: _openSearch,
+            icon: const Icon(Icons.search_rounded),
+          ),
+          IconButton(
+            tooltip: 'فیلتر فایل‌ها',
+            onPressed: _openFilters,
+            icon: Badge(
+              isLabelVisible: state.selectedType != null,
+              smallSize: 7,
+              child: const Icon(Icons.tune_rounded),
+            ),
+          ),
           TextButton.icon(
             onPressed: _openClipbox,
             icon: const Icon(Icons.content_paste_rounded, size: 19),
             label: const Text('کلیپ‌باکس',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
           ),
-          IconButton(tooltip: 'تنظیمات', onPressed: _openSettings,
-            icon: const Icon(Icons.settings_outlined)),
+          IconButton(
+            tooltip: 'تنظیمات',
+            onPressed: _openSettings,
+            icon: const Icon(Icons.settings_outlined),
+          ),
+          const SizedBox(width: 4),
         ],
       ),
-      body: Column(children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('آرشیو رسانه', style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800)),
-              const SizedBox(height: 5),
-              Text(widget.config.isKetabkhaneh
-                  ? 'مدیریت هوشمند اسناد و رسانه‌های کتابخانه'
-                  : 'تمام فایل‌های کاری شما در یک مکان امن',
-                style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant)),
-              const SizedBox(height: 15),
-              TextField(
-                controller: _search,
-                onChanged: (v) { state.setQuery(v); setState(() {}); },
-                decoration: InputDecoration(
-                  hintText: 'جستجوی عنوان، توضیح یا برچسب...',
-                  prefixIcon: const Icon(Icons.search_rounded),
-                  suffixIcon: _search.text.isNotEmpty
-                    ? IconButton(tooltip: 'پاک‌کردن', onPressed: () {
-                        _search.clear(); state.setQuery(''); setState(() {});
-                      }, icon: const Icon(Icons.close_rounded))
-                    : null,
+      body: Column(
+        children: [
+          Container(
+            padding: const EdgeInsetsDirectional.fromSTEB(17, 12, 17, 11),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              border: Border(bottom: BorderSide(
+                color: theme.colorScheme.outlineVariant.withValues(alpha: .42),
+              )),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.auto_awesome_mosaic_outlined,
+                  size: 18, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('آرشیو فایل‌ها',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800)),
                 ),
-              ),
-            ],
+                Icon(Icons.calendar_month_outlined, size: 15,
+                  color: theme.colorScheme.onSurfaceVariant),
+                const SizedBox(width: 5),
+                Text(JalaliFormatter.formatShortDate(DateTime.now()),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurfaceVariant)),
+              ],
+            ),
           ),
-        ),
-        SizedBox(height: 43, child: ListView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          children: [
-            _filter('همه', null, state),
-            _filter('عکس', MediaFileType.image, state),
-            _filter('ویدیو', MediaFileType.video, state),
-            _filter('PDF', MediaFileType.pdf, state),
-            _filter('سایر فایل‌ها', MediaFileType.other, state),
-          ],
-        )),
-        const SizedBox(height: 8),
-        if (state.isLoading && state.items.isNotEmpty)
-          const LinearProgressIndicator(minHeight: 2),
-        Expanded(child: RefreshIndicator(
-          onRefresh: state.refresh,
-          child: _buildList(state),
-        )),
-      ]),
+          if (state.query.trim().isNotEmpty || state.selectedType != null)
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(14, 7, 14, 3),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Wrap(spacing: 7, runSpacing: 4, children: [
+                  if (state.query.trim().isNotEmpty)
+                    InputChip(
+                      avatar: const Icon(Icons.search_rounded, size: 16),
+                      label: Text(state.query, overflow: TextOverflow.ellipsis),
+                      onPressed: _openSearch,
+                      onDeleted: () => state.setQuery(''),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  if (state.selectedType != null)
+                    InputChip(
+                      avatar: const Icon(Icons.filter_alt_outlined, size: 16),
+                      label: Text(_typeLabel(state.selectedType)),
+                      onPressed: _openFilters,
+                      onDeleted: () => unawaited(state.setType(null)),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ]),
+              ),
+            ),
+          if (state.isLoading && state.items.isNotEmpty)
+            const LinearProgressIndicator(minHeight: 2),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: state.refresh,
+              child: _buildList(state),
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _picking ? null : _pickFiles,
         icon: _picking
@@ -289,16 +324,201 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
     );
   }
 
-  Widget _filter(String label, MediaFileType? type, ArchiveProvider state) {
-    return Padding(
-      padding: const EdgeInsetsDirectional.only(end: 8),
-      child: ChoiceChip(
-        label: Text(label, style: const TextStyle(fontSize: 12)),
-        selected: state.selectedType == type,
-        showCheckmark: false,
-        onSelected: (_) => state.setType(type),
+
+  String _typeLabel(MediaFileType? type) => switch (type) {
+    null => 'همه فایل‌ها',
+    MediaFileType.image => 'تصاویر',
+    MediaFileType.video => 'ویدیوها',
+    MediaFileType.pdf => 'اسناد PDF',
+    MediaFileType.other => 'سایر فایل‌ها',
+  };
+
+  IconData _typeIcon(MediaFileType? type) => switch (type) {
+    null => Icons.dashboard_customize_outlined,
+    MediaFileType.image => Icons.image_outlined,
+    MediaFileType.video => Icons.movie_outlined,
+    MediaFileType.pdf => Icons.picture_as_pdf_outlined,
+    MediaFileType.other => Icons.description_outlined,
+  };
+
+  Future<void> _openFilters() async {
+    final current = _archive.selectedType;
+    final scheme = Theme.of(context).colorScheme;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: true,
+      backgroundColor: scheme.surface,
+      builder: (sheetContext) => Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(18, 4, 18, 20),
+        child: Column(mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('نمایش فایل‌ها',
+              style: Theme.of(sheetContext).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800)),
+            const SizedBox(height: 5),
+            Text('نوع فایل موردنظر را انتخاب کنید.',
+              style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 14),
+            for (final type in <MediaFileType?>[
+              null, MediaFileType.image, MediaFileType.video,
+              MediaFileType.pdf, MediaFileType.other,
+            ])
+              ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(13)),
+                tileColor: type == current
+                  ? scheme.primaryContainer.withValues(alpha: .55) : null,
+                leading: Icon(_typeIcon(type),
+                  color: type == current ? scheme.primary : scheme.onSurfaceVariant),
+                title: Text(_typeLabel(type),
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+                trailing: type == current
+                    ? Icon(Icons.check_circle_rounded, color: scheme.primary)
+                    : const Icon(Icons.chevron_left_rounded, size: 18),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  unawaited(_archive.setType(type));
+                },
+              ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _openSearch() async {
+    final controller = TextEditingController(text: _archive.query);
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        builder: (sheetContext) => StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            final theme = Theme.of(sheetContext);
+            final keyboardHeight = MediaQuery.viewInsetsOf(sheetContext).bottom;
+            final availableHeight = MediaQuery.sizeOf(sheetContext).height - keyboardHeight;
+            return Padding(
+              padding: EdgeInsets.only(bottom: keyboardHeight),
+              child: SizedBox(
+                height: availableHeight * .80,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(18, 0, 18, 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('جستجو در آرشیو',
+                            style: theme.textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: controller,
+                            autofocus: true,
+                            textInputAction: TextInputAction.search,
+                            onChanged: (value) {
+                              _archive.setQuery(value);
+                              setSheetState(() {});
+                            },
+                            decoration: InputDecoration(
+                              hintText: 'عنوان، توضیحات یا برچسب...',
+                              prefixIcon: const Icon(Icons.search_rounded),
+                              suffixIcon: controller.text.isNotEmpty
+                                ? IconButton(
+                                    tooltip: 'پاک‌کردن',
+                                    onPressed: () {
+                                      controller.clear();
+                                      _archive.setQuery('');
+                                      setSheetState(() {});
+                                    },
+                                    icon: const Icon(Icons.close_rounded),
+                                  )
+                                : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: Consumer<ArchiveProvider>(
+                        builder: (context, state, _) {
+                          if (state.query.trim().isEmpty) {
+                            return Center(child: Padding(
+                              padding: const EdgeInsets.all(28),
+                              child: Column(mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.manage_search_rounded, size: 49,
+                                    color: theme.colorScheme.primary.withValues(alpha: .65)),
+                                  const SizedBox(height: 14),
+                                  const Text('برای یافتن فایل، عنوان یا برچسب آن را بنویسید.',
+                                    textAlign: TextAlign.center),
+                                ],
+                              ),
+                            ));
+                          }
+                          if (state.isLoading && state.items.isEmpty) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+                          if (state.items.isEmpty) {
+                            return const Center(child: Text('فایلی پیدا نشد.'));
+                          }
+                          return ListView.separated(
+                            padding: const EdgeInsetsDirectional.fromSTEB(15, 3, 15, 6),
+                            itemCount: state.items.length,
+                            separatorBuilder: (_, _) => const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final item = state.items[index];
+                              return ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 3),
+                                leading: CircleAvatar(
+                                  backgroundColor: theme.colorScheme.primaryContainer,
+                                  child: Icon(_typeIcon(item.fileType),
+                                    color: theme.colorScheme.primary)),
+                                title: Text(item.title,
+                                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                                subtitle: Text(
+                                  'ثبت: ' + JalaliFormatter.formatShortDate(item.createdAt)
+                                  + ' · ' + JalaliFormatter.formatTime(item.createdAt),
+                                  style: theme.textTheme.labelSmall),
+                                onTap: () {
+                                  Navigator.of(sheetContext).pop();
+                                  unawaited(_openMedia(item));
+                                },
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsetsDirectional.fromSTEB(18, 7, 18, 15),
+                      child: SizedBox(width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () => Navigator.of(sheetContext).pop(),
+                          icon: const Icon(Icons.view_list_rounded),
+                          label: const Text('نمایش نتایج در آرشیو'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 
   Widget _buildList(ArchiveProvider state) {
