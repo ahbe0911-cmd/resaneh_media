@@ -44,7 +44,7 @@ class MediaGridCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Card(
       margin: EdgeInsets.zero,
-      elevation: 0,
+      elevation: 0.5,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(color: scheme.outlineVariant),
@@ -82,12 +82,13 @@ class MediaGridCard extends StatelessWidget {
         ),
         Padding(
           padding: const EdgeInsetsDirectional.fromSTEB(10, 3, 10, 2),
-          child: Text(JalaliFormatter.formatShortDate(item.createdAt),
+          child: Text('ثبت: ' + JalaliFormatter.formatShortDate(item.createdAt) + ' · ' + JalaliFormatter.formatTime(item.createdAt),
+            maxLines: 1, overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant)),
         ),
         Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
           IconButton(tooltip: 'اشتراک‌گذاری', onPressed: onShare,
-            icon: const Icon(Icons.share_outlined, size: 20)),
+            icon: const Icon(Icons.ios_share_rounded, size: 20)),
           IconButton(tooltip: 'سنجاق', onPressed: onPin,
             icon: Icon(item.isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
               color: item.isPinned ? scheme.primary : scheme.onSurfaceVariant, size: 20)),
