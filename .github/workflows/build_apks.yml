@@ -46,7 +46,7 @@ jobs:
 
       - name: Generate missing Flutter Android scaffolding
         run: |
-          flutter create --platforms=android --android-language kotlin \
+          flutter create --no-pub --platforms=android --android-language kotlin \
             --org com.resaneh --project-name resaneh_media .
 
       - name: Prepare fonts and icons
