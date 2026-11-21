@@ -1,0 +1,185 @@
+name: Build Resaneh Android APKs
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-apks:
+    name: Build both flavors
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Flutter Stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.50.1'
+          cache: true
+
+      - name: Show toolchain versions
+        run: |
+          flutter --version
+          java -version
+          flutter doctor -v
+
+      - name: Generate missing Flutter Android scaffolding
+        run: |
+          flutter create --platforms=android --android-language kotlin \
+            --org com.resaneh --project-name resaneh_media .
+
+      - name: Prepare fonts and icons
+        run: |
+          bash scripts/fetch_fonts.sh
+          python3 scripts/ensure_brand_assets.py
+          test -s assets/icons/ketabkhaneh_icon.png
+          test -s assets/icons/kafinet_icon.png
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Generate both launcher icons
+        run: |
+          dart run flutter_launcher_icons -f flutter_launcher_icons-ketabkhaneh.yaml
+          dart run flutter_launcher_icons -f flutter_launcher_icons-kafinet.yaml
+
+      - name: Generate both native splash screens
+        run: dart run flutter_native_splash:create --all-flavors
+
+      - name: Configure Android release signing
+        env:
+          RESANEH_KEYSTORE_BASE64: ${{ secrets.RESANEH_KEYSTORE_BASE64 }}
+          RESANEH_STORE_PASSWORD: ${{ secrets.RESANEH_STORE_PASSWORD }}
+          RESANEH_KEY_PASSWORD: ${{ secrets.RESANEH_KEY_PASSWORD }}
+          RESANEH_KEY_ALIAS: ${{ secrets.RESANEH_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          mkdir -p android/app
+          KEY_PATH='android/app/upload-keystore.jks'
+          have_secrets=0
+          for v in RESANEH_KEYSTORE_BASE64 RESANEH_STORE_PASSWORD RESANEH_KEY_PASSWORD RESANEH_KEY_ALIAS; do
+            if [[ -n "${!v:-}" ]]; then
+              have_secrets=$((have_secrets + 1))
+            fi
+          done
+          if [[ "$have_secrets" -eq 4 ]]; then
+            printf '%s' "$RESANEH_KEYSTORE_BASE64" | base64 --decode > "$KEY_PATH"
+            test -s "$KEY_PATH"
+            STORE_PASSWORD="$RESANEH_STORE_PASSWORD"
+            KEY_PASSWORD="$RESANEH_KEY_PASSWORD"
+            KEY_ALIAS="$RESANEH_KEY_ALIAS"
+            echo 'Using persistent signing key from GitHub Secrets.'
+          elif [[ "$have_secrets" -eq 0 ]]; then
+            # Automatically creates a valid installable signed release APK.
+            # NOT suitable for updates: newly generated keys change each run.
+            echo '::warning title=Temporary release signing::No persistent keystore secrets configured. APKs are installable, but subsequent runs will be signed differently and cannot update them in-place.'
+            STORE_PASSWORD="$(openssl rand -hex 24)"
+            KEY_PASSWORD="$STORE_PASSWORD"
+            KEY_ALIAS='resaneh-ci'
+            keytool -genkeypair -v \
+              -keystore "$KEY_PATH" \
+              -storetype JKS \
+              -alias "$KEY_ALIAS" \
+              -keyalg RSA \
+              -keysize 3072 \
+              -validity 10000 \
+              -storepass "$STORE_PASSWORD" \
+              -keypass "$KEY_PASSWORD" \
+              -dname 'CN=Resaneh, OU=Android, O=Resaneh, L=Baku, ST=Baku, C=AZ' \
+              -noprompt
+          else
+            echo '::error title=Incomplete signing secrets::Configure all four RESANEH signing secrets or remove all four for a disposable test key.'
+            exit 1
+          fi
+          {
+            echo 'storeFile=upload-keystore.jks'
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > android/key.properties
+          chmod 600 android/key.properties "$KEY_PATH"
+          unset RESANEH_KEYSTORE_BASE64 STORE_PASSWORD KEY_PASSWORD
+
+      - name: Static analysis
+        run: flutter analyze --no-pub
+
+      - name: Unit and widget tests
+        run: flutter test --no-pub
+
+      - name: Build Ketabkhaneh release APK
+        run: |
+          flutter build apk --release --flavor ketabkhaneh -t lib/main_ketabkhaneh.dart
+          test -s build/app/outputs/flutter-apk/app-ketabkhaneh-release.apk
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-ketabkhaneh-release.apk dist/Resaneh-Ketabkhaneh.apk
+
+      - name: Build Kafinet release APK
+        run: |
+          flutter build apk --release --flavor kafinet -t lib/main_kafinet.dart
+          test -s build/app/outputs/flutter-apk/app-kafinet-release.apk
+          cp build/app/outputs/flutter-apk/app-kafinet-release.apk dist/Resaneh-Kafinet.apk
+
+      - name: Check APK signing and package identities
+        run: |
+          set -euo pipefail
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [[ -z "$SDK_DIR" ]]; then
+            echo 'Android SDK path is unavailable.' >&2
+            exit 1
+          fi
+          APKSIGNER="$(find "$SDK_DIR/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          AAPT="$(find "$SDK_DIR/build-tools" -maxdepth 2 -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          for name in Resaneh-Ketabkhaneh Resaneh-Kafinet; do
+            "$APKSIGNER" verify --print-certs "dist/$name.apk"
+          done
+          "$AAPT" dump badging dist/Resaneh-Ketabkhaneh.apk | grep -F "package: name='com.resaneh.ketabkhaneh'"
+          "$AAPT" dump badging dist/Resaneh-Kafinet.apk | grep -F "package: name='com.resaneh.kafinet'"
+          (cd dist && sha256sum *.apk > SHA256SUMS.txt)
+          cat dist/SHA256SUMS.txt
+
+      - name: Upload Ketabkhaneh APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resaneh-Ketabkhaneh
+          path: dist/Resaneh-Ketabkhaneh.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Kafinet APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resaneh-Kafinet
+          path: dist/Resaneh-Kafinet.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: Resaneh-Checksums
+          path: dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30

@@ -1,27 +1,31 @@
-# Resaneh Media — رسانه کتابخانه و رسانه کافی‌نت
+# Resaneh Media — Two independent Flutter Android apps
 
-Flutter Android project for two independent application flavors:
+Two flavors with a shared Flutter codebase:
 
-- `ketabkhaneh`: `com.resaneh.ketabkhaneh`
-- `kafinet`: `com.resaneh.kafinet`
+- **رسانه کتابخانه** — `com.resaneh.ketabkhaneh` — emerald and gold.
+- **رسانه کافی‌نت** — `com.resaneh.kafinet` — indigo and cyan.
 
-## وضعیت مخزن
+The repository contains the merged Dart source from the earlier implementation steps, Android configuration, both visual asset sets, and GitHub Actions CI for two independent APKs. Full instructions are in [README-STEP6-FA.md](README-STEP6-FA.md).
 
-مخزن ایجاد شده است. **سورس پروژه هنوز به آن بارگذاری نشده است.** پیش از اجرای GitHub Actions باید محتوای فایل `Resaneh-Source-Bundle.zip` در ریشه مخزن استخراج و Commit شود. پوشه `.github` باید همراه سایر فایل‌ها حفظ شود.
+## Quick start
 
-پس از آپلود، این فایل‌ها را بررسی کنید:
-- `pubspec.yaml`
-- `lib/main_ketabkhaneh.dart`
-- `lib/main_kafinet.dart`
-- `.github/workflows/build_apks.yml`
+```bash
+flutter create --platforms=android --android-language kotlin --org com.resaneh --project-name resaneh_media .
+bash scripts/fetch_fonts.sh
+python3 scripts/ensure_brand_assets.py
+flutter pub get
+dart run flutter_launcher_icons -f flutter_launcher_icons-ketabkhaneh.yaml
+dart run flutter_launcher_icons -f flutter_launcher_icons-kafinet.yaml
+dart run flutter_native_splash:create --all-flavors
+flutter analyze
+flutter test
+```
 
-سپس از بخش Actions گردش‌کار **Build Resaneh Android APKs** را اجرا کنید.
+Build both APKs:
 
-> برای انتشار و نصب آپدیت‌ها از کلید امضای ثابت و GitHub Secrets استفاده کنید. کلیدهای خصوصی یا فایل `key.properties` را به مخزن ارسال نکنید.
+```bash
+flutter build apk --release --flavor ketabkhaneh -t lib/main_ketabkhaneh.dart
+flutter build apk --release --flavor kafinet -t lib/main_kafinet.dart
+```
 
-## هدف خروجی
-
-- `Resaneh-Ketabkhaneh.apk`
-- `Resaneh-Kafinet.apk`
-
-این پروژه هنوز بیلد و تست نصب تأییدشده ندارد.
+**Status:** Source assembled; Flutter and Android Gradle build execution not yet verified. Configure four signing secrets for stable upgrade keys before real distribution. Fonts are fetched from official upstream and are not included in this archive.

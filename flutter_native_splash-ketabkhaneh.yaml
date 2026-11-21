@@ -1,0 +1,13 @@
+flutter_native_splash:
+  android: true
+  ios: false
+  web: false
+  color: "#064E3B"
+  color_dark: "#05382E"
+  image: "assets/splash/ketabkhaneh_splash.png"
+  image_dark: "assets/splash/ketabkhaneh_splash.png"
+  android_12:
+    image: "assets/splash/ketabkhaneh_splash.png"
+    image_dark: "assets/splash/ketabkhaneh_splash.png"
+    icon_background_color: "#064E3B"
+    icon_background_color_dark: "#05382E"

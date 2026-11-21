@@ -1,0 +1,13 @@
+flutter_native_splash:
+  android: true
+  ios: false
+  web: false
+  color: "#172554"
+  color_dark: "#111B40"
+  image: "assets/splash/kafinet_splash.png"
+  image_dark: "assets/splash/kafinet_splash.png"
+  android_12:
+    image: "assets/splash/kafinet_splash.png"
+    image_dark: "assets/splash/kafinet_splash.png"
+    icon_background_color: "#172554"
+    icon_background_color_dark: "#111B40"

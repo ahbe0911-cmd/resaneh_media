@@ -1,0 +1,8 @@
+flutter_launcher_icons:
+  android: true
+  ios: false
+  min_sdk_android: 24
+  image_path: "assets/icons/ketabkhaneh_icon.png"
+  adaptive_icon_background: "#064E3B"
+  adaptive_icon_foreground: "assets/icons/ketabkhaneh_adaptive_foreground.png"
+  adaptive_icon_foreground_inset: 0
