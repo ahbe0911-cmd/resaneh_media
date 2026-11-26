@@ -165,6 +165,11 @@ class VaultService {
     return _repository.search(query: query, type: type, sort: sort, limit: limit, offset: offset);
   }
 
+  Future<MediaItem?> getById(String id) async {
+    await initialize();
+    return _repository.getById(id);
+  }
+
   Future<bool> updateMetadata({
     required String id,
     required String title,

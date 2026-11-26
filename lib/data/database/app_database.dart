@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
 import 'database_schema.dart';
+import 'search_index.dart';
 
 class AppDatabase {
   AppDatabase._();
@@ -23,6 +24,7 @@ class AppDatabase {
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, version) async => DatabaseSchema.create(db),
       onUpgrade: (db, from, to) async => DatabaseSchema.upgrade(db, from, to),
+      onOpen: SearchIndex.initialize,
     );
   }
 

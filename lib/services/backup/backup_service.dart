@@ -9,6 +9,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../data/database/app_database.dart';
+import '../../data/database/search_index.dart';
 
 class BackupService {
   BackupService({AppDatabase? database})
@@ -58,6 +59,15 @@ class BackupService {
       final dbSnapshot = File(p.join(snapshot.path, 'database', 'resaneh_vault.db'));
       if (!await dbSnapshot.exists()) {
         throw StateError('پایگاه داده برای پشتیبان‌گیری یافت نشد.');
+      }
+
+      // A backup must remain portable to Android devices without FTS5.
+      // Rebuild the derived indexes on restore; hashes cover the stripped copy.
+      final copy = await openDatabase(dbSnapshot.path, singleInstance: false);
+      try {
+        await SearchIndex.removeFromBackup(copy);
+      } finally {
+        await copy.close();
       }
 
       final files = await _filesRecursively(snapshot);

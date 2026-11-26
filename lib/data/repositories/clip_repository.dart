@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/utils/persian_normalizer.dart';
 import '../database/app_database.dart';
+import '../database/search_index.dart';
 import '../models/clip_entry.dart';
 
 class ClipRepository {
@@ -45,24 +46,36 @@ class ClipRepository {
     final db = await _database.database;
     final normalized = PersianNormalizer.normalize(query);
     final compact = PersianNormalizer.compact(query);
-    final where = normalized.isEmpty
-        ? null
-        : "search_text LIKE ? ESCAPE '!' OR search_compact LIKE ? ESCAPE '!'";
-    final args = normalized.isEmpty
-        ? null
-        : [
-            '%${PersianNormalizer.escapeLike(normalized)}%',
-            '%${PersianNormalizer.escapeLike(compact)}%',
-          ];
+    final conditions = <String>[];
+    final args = <Object?>[];
+    if (normalized.isNotEmpty) {
+      final match = SearchIndex.matchExpression(query);
+      if (SearchIndex.enabled(db) && match != null) {
+        conditions.add('id IN (SELECT id FROM clip_fts WHERE clip_fts MATCH ?)');
+        args.add(match);
+      }
+      conditions.add("(search_text LIKE ? ESCAPE '!' OR search_compact LIKE ? ESCAPE '!')");
+      args.addAll([
+        '%${PersianNormalizer.escapeLike(normalized)}%',
+        '%${PersianNormalizer.escapeLike(compact)}%',
+      ]);
+    }
+    final where = conditions.isEmpty ? null : conditions.join(' AND ');
     final rows = await db.query(
       'clip_entries',
       where: where,
-      whereArgs: args,
+      whereArgs: args.isEmpty ? null : args,
       orderBy: 'is_pinned DESC, created_at DESC, id DESC',
       limit: limit.clamp(1, 500),
       offset: offset < 0 ? 0 : offset,
     );
     return rows.map(ClipEntry.fromMap).toList();
+  }
+
+  Future<ClipEntry?> getById(String id) async {
+    final db = await _database.database;
+    final rows = await db.query('clip_entries', where: 'id = ?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : ClipEntry.fromMap(rows.single);
   }
 
   Future<bool> update({

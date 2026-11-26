@@ -3,6 +3,7 @@ import '../../core/utils/file_classifier.dart';
 import '../../core/utils/archive_sort.dart';
 import '../../core/utils/persian_normalizer.dart';
 import '../database/app_database.dart';
+import '../database/search_index.dart';
 import '../models/media_item.dart';
 import 'tag_repository.dart';
 
@@ -49,6 +50,18 @@ class MediaRepository {
     final args = <Object?>[];
     final normalized = PersianNormalizer.normalize(query);
     if (normalized.isNotEmpty) {
+      final match = SearchIndex.matchExpression(query);
+      if (SearchIndex.enabled(db) && match != null) {
+        conditions.add('''m.id IN (
+          SELECT id FROM media_fts WHERE media_fts MATCH ?
+          UNION
+          SELECT mt.media_id FROM media_tags mt
+          JOIN tags_fts tf ON tf.id=mt.tag_id
+          WHERE tags_fts MATCH ?
+        )''');
+        args.addAll([match, match]);
+      }
+      // Verify against the original predicates to preserve exact semantics.
       conditions.add('''
         (m.search_text LIKE ? ESCAPE '!'
          OR m.search_compact LIKE ? ESCAPE '!'

@@ -2,7 +2,7 @@ import 'package:sqflite/sqflite.dart';
 
 class DatabaseSchema {
   DatabaseSchema._();
-  static const int version = 1;
+  static const int version = 2;
 
   static Future<void> create(DatabaseExecutor db) async {
     await db.execute('''
@@ -13,6 +13,7 @@ class DatabaseSchema {
         stored_name TEXT NOT NULL,
         relative_path TEXT NOT NULL UNIQUE,
         thumbnail_path TEXT,
+        checksum_sha256 TEXT,
         mime_type TEXT NOT NULL,
         file_type TEXT NOT NULL CHECK(file_type IN ('image','video','pdf','other')),
         file_size INTEGER NOT NULL DEFAULT 0,
@@ -83,6 +84,14 @@ class DatabaseSchema {
     await db.execute(
       'CREATE INDEX idx_clip_created ON clip_entries(created_at DESC)',
     );
+    await _createV2Indexes(db);
+  }
+
+  static Future<void> _createV2Indexes(DatabaseExecutor db) async {
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_media_size ON media_items(is_pinned DESC, file_size DESC, created_at DESC, id DESC)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_media_title ON media_items(is_pinned DESC, title COLLATE NOCASE ASC, id ASC)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_media_type_order ON media_items(file_type, is_pinned DESC, created_at DESC, id DESC)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_clip_pinned ON clip_entries(is_pinned DESC, created_at DESC, id DESC)');
   }
 
   static Future<void> upgrade(
@@ -96,6 +105,7 @@ class DatabaseSchema {
           await db.execute(
             'ALTER TABLE media_items ADD COLUMN checksum_sha256 TEXT',
           );
+          await _createV2Indexes(db);
           break;
         default:
           throw StateError('Undefined migration to version $next');
