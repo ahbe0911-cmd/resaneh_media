@@ -9,7 +9,6 @@ import '../../../app/flavor_config.dart';
 import '../../../app/resaneh_brand_theme.dart';
 import '../../../core/utils/file_classifier.dart';
 import '../../../core/utils/jalali_formatter.dart';
-import '../../../core/utils/formatters.dart';
 import '../../../data/models/media_item.dart';
 import '../../../providers/archive_provider.dart';
 import '../../../providers/settings_provider.dart';
@@ -315,13 +314,15 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
         body: SafeArea(
           bottom: false,
           child: RefreshIndicator(
-            onRefresh: state.refresh,
+            onRefresh: () async {
+              if (enabled && !selection) await state.refresh();
+            },
             child: CustomScrollView(
               controller: _scroll,
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
                 SliverAppBar(
-                  floating: true, snap: true, toolbarHeight: 62,
+                  floating: true, snap: true, pinned: selection, toolbarHeight: 62,
                   automaticallyImplyLeading: false,
                   title: selection
                     ? Text('${JalaliFormatter.toPersianDigits(_selected.length.toString())} انتخاب‌شده')
@@ -407,7 +408,7 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
                     padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
                     sliver: SliverGrid(
                       gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 240,
+                        maxCrossAxisExtent: MediaQuery.sizeOf(context).width < 340 ? 340 : 240,
                         mainAxisExtent: 250.0 + (MediaQuery.textScalerOf(context)
                           .scale(14) - 14).clamp(0.0, 70.0).toDouble(),
                         crossAxisSpacing: 10, mainAxisSpacing: 10),

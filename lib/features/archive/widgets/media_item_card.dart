@@ -49,6 +49,7 @@ class MediaItemCard extends StatelessWidget {
             )),
             const SizedBox(width: 11),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Row(children: [
                   if (item.isPinned) ...[

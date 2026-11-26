@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -20,6 +18,8 @@ class AppShellPage extends StatefulWidget {
 class _AppShellPageState extends State<AppShellPage> {
   final _clipKey = GlobalKey<ClipboxPageState>();
   int _index = 0;
+  final _pendingText = <String>[];
+  bool _drainingText = false;
 
   void _select(int value) {
     if (value == _index || context.read<SettingsProvider>().isBusy) return;
@@ -29,24 +29,37 @@ class _AppShellPageState extends State<AppShellPage> {
 
   void _receiveText(String value) {
     if (!mounted) return;
-    if (context.read<SettingsProvider>().isBusy) {
-      // Keep the received text available to the editor; maintenance stays modal.
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('پس از پایان عملیات، متن را دوباره اشتراک‌گذاری کنید.'),
-      ));
-      return;
-    }
-    _select(1);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _clipKey.currentState != null) {
-        unawaited(_clipKey.currentState!.receiveText(value));
+    _pendingText.add(value);
+    _scheduleTextEditor();
+  }
+
+  void _scheduleTextEditor() {
+    if (!mounted || _drainingText || _pendingText.isEmpty ||
+        context.read<SettingsProvider>().isBusy) return;
+    _drainingText = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        if (!mounted || context.read<SettingsProvider>().isBusy ||
+            _clipKey.currentState == null || _pendingText.isEmpty) return;
+        _select(1);
+        // The clip tab is kept mounted even when it is not selected.
+        await _clipKey.currentState!.receiveText(_pendingText.removeAt(0));
+      } finally {
+        _drainingText = false;
+        if (mounted && _pendingText.isNotEmpty) {
+          _scheduleTextEditor();
+          // Ensure a frame is scheduled even when the editor has just closed.
+          WidgetsBinding.instance.ensureVisualUpdate();
+        }
       }
     });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   @override
   Widget build(BuildContext context) {
     final busy = context.select<SettingsProvider, bool>((s) => s.isBusy);
+    if (!busy && _pendingText.isNotEmpty) _scheduleTextEditor();
     final keyboard = MediaQuery.viewInsetsOf(context).bottom > 0;
     return PopScope(
       canPop: _index == 0 && !busy,
