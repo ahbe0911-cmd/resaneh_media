@@ -22,7 +22,8 @@ class FakeVault extends VaultService {
   int searches = 0;
   @override
   Future<List<MediaItem>> search({String query = '', MediaFileType? type,
-    ArchiveSort sort = ArchiveSort.newest, int limit = 100, int offset = 0}) async {
+    ArchiveSort sort = ArchiveSort.newest, String? tagFilter,
+    int limit = 100, int offset = 0}) async {
     searches++;
     lastSort = sort;
     return [sample('a'), sample('b')];

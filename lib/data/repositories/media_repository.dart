@@ -42,6 +42,7 @@ class MediaRepository {
     String query = '',
     MediaFileType? type,
     ArchiveSort sort = ArchiveSort.newest,
+    String? tagFilter,
     int limit = 100,
     int offset = 0,
   }) async {
@@ -83,6 +84,10 @@ class MediaRepository {
     if (type != null) {
       conditions.add('m.file_type = ?');
       args.add(type.name);
+    }
+    if (tagFilter != null) {
+      conditions.add('EXISTS (SELECT 1 FROM media_tags mt WHERE mt.media_id=m.id AND mt.tag_id=?)');
+      args.add(tagFilter);
     }
     final clause = conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
     final rows = await db.rawQuery(

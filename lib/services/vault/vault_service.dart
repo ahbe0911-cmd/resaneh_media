@@ -76,7 +76,7 @@ class VaultService {
     try {
       await sourceFile.copy(stored.path);
       final size = await stored.length();
-      if (type == MediaFileType.image || type == MediaFileType.video) {
+      if (type != MediaFileType.other) {
         thumbnailPath = await _thumbnails.createThumbnail(
           sourcePath: stored.path,
           outputDirectory: thumbnailDirectory.path,
@@ -159,10 +159,11 @@ class VaultService {
 
   Future<List<MediaItem>> search({
     String query = '', MediaFileType? type, ArchiveSort sort = ArchiveSort.newest,
-    int limit = 100, int offset = 0,
+    String? tagFilter, int limit = 100, int offset = 0,
   }) async {
     await initialize();
-    return _repository.search(query: query, type: type, sort: sort, limit: limit, offset: offset);
+    return _repository.search(query: query, type: type, sort: sort,
+      tagFilter: tagFilter, limit: limit, offset: offset);
   }
 
   Future<MediaItem?> getById(String id) async {

@@ -10,6 +10,8 @@ import '../../../app/resaneh_brand_theme.dart';
 import '../../../core/utils/file_classifier.dart';
 import '../../../core/utils/jalali_formatter.dart';
 import '../../../data/models/media_item.dart';
+import '../../../data/models/media_tag.dart';
+import '../../../data/repositories/tag_repository.dart';
 import '../../../providers/archive_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../widgets/archive_filter_bar.dart';
@@ -47,6 +49,7 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
   bool _batchBusy = false;
   final _selected = <String, MediaItem>{};
   final _search = TextEditingController();
+  String? _tagLabel;
 
   @override
   void initState() {
@@ -235,6 +238,35 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
     _archive.setQuery(value);
   }
 
+  Future<void> _chooseTag() async {
+    try {
+      final tags = await context.read<TagRepository>().getAll();
+      if (!mounted) return;
+      final selected = await showModalBottomSheet<MediaTag>(
+        context: context, showDragHandle: true, useSafeArea: true,
+        builder: (ctx) => SizedBox(
+          height: MediaQuery.sizeOf(ctx).height * .55,
+          child: tags.isEmpty
+            ? const Center(child: Text('هنوز برچسبی ثبت نشده است.'))
+            : ListView.builder(
+                itemCount: tags.length,
+                itemBuilder: (_, i) => ListTile(
+                  leading: const Icon(Icons.label_outline),
+                  title: Text(tags[i].name),
+                  selected: tags[i].id == _archive.tagFilter,
+                  onTap: () => Navigator.pop(ctx, tags[i]),
+                ),
+              ),
+        ),
+      );
+      if (!mounted || selected == null) return;
+      setState(() => _tagLabel = selected.name);
+      await _archive.setTagFilter(selected.id);
+    } catch (error) {
+      _showMessage('خواندن برچسب‌ها ناموفق بود: $error');
+    }
+  }
+
   Future<void> _toggleLayout(SettingsProvider settings) async {
     try {
       await settings.setLayout(settings.layout == ArchiveLayout.list
@@ -394,6 +426,12 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
                 SliverToBoxAdapter(child: ArchiveFilterBar(
                   type: state.selectedType, sort: state.sort, layout: settings.layout,
                   enabled: enabled && !selection,
+                  tagLabel: state.tagFilter == null ? null : (_tagLabel ?? 'برچسب انتخابی'),
+                  onTag: () => unawaited(_chooseTag()),
+                  onClearTag: () {
+                    setState(() => _tagLabel = null);
+                    unawaited(state.setTagFilter(null));
+                  },
                   onType: (value) => unawaited(state.setType(value)),
                   onSort: (value) => unawaited(state.setSort(value)),
                   onToggleLayout: () => unawaited(_toggleLayout(settings)),
@@ -450,7 +488,7 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
   Widget _emptyState(ArchiveProvider state) {
     if (state.isLoading) return const Center(child: CircularProgressIndicator());
     final scheme = Theme.of(context).colorScheme;
-    final filtered = state.query.isNotEmpty || state.selectedType != null;
+    final filtered = state.query.isNotEmpty || state.selectedType != null || state.tagFilter != null;
     return Center(child: Padding(padding: const EdgeInsets.all(24),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         CircleAvatar(radius: 40, backgroundColor: scheme.primaryContainer,

@@ -83,12 +83,13 @@ class _ImportFilesPageState extends State<ImportFilesPage> {
     final description = _descriptionController.text.trim();
     setState(() { _saving = true; _processed = 0; _saveTotal = pending.length; });
 
-    for (final entry in pending) {
+    final titles = {for (final entry in pending) entry: entry.title.text.trim()};
+    Future<void> saveEntry(_ImportEntry entry) async {
       try {
         entry.error = null;
         await _vault.importFile(
           sourceFile: entry.file.stagedFile,
-          title: entry.title.text.trim(),
+          title: titles[entry]!,
           description: description,
           tags: tags,
           originalName: entry.file.originalName,
@@ -105,6 +106,12 @@ class _ImportFilesPageState extends State<ImportFilesPage> {
       }
       if (!mounted) return;
       setState(() { _processed++; });
+    }
+
+    // Bound concurrency to two files so large imports do not exhaust memory.
+    for (var i = 0; i < pending.length; i += 2) {
+      await Future.wait(pending.skip(i).take(2).map(saveEntry));
+      if (!mounted) return;
     }
 
     await _archive.refresh();

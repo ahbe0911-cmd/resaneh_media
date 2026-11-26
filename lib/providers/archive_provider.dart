@@ -15,6 +15,7 @@ class ArchiveProvider extends ChangeNotifier {
   String _query = '';
   MediaFileType? _type;
   ArchiveSort _sort = ArchiveSort.newest;
+  String? _tagFilter;
   String? _error;
   bool _loading = false;
   bool _loadingMore = false;
@@ -27,6 +28,7 @@ class ArchiveProvider extends ChangeNotifier {
   String get query => _query;
   MediaFileType? get selectedType => _type;
   ArchiveSort get sort => _sort;
+  String? get tagFilter => _tagFilter;
   String? get error => _error;
   bool get isLoading => _loading;
   bool get isLoadingMore => _loadingMore;
@@ -60,6 +62,13 @@ class ArchiveProvider extends ChangeNotifier {
     await refresh();
   }
 
+  Future<void> setTagFilter(String? value) async {
+    if (_tagFilter == value) return;
+    _tagFilter = value;
+    _clearForNewCriteria();
+    await refresh();
+  }
+
   void _clearForNewCriteria() {
     _items.clear();
     _loading = true;
@@ -68,21 +77,28 @@ class ArchiveProvider extends ChangeNotifier {
     _error = null;
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool preserveWindow = false}) async {
     if (_disposed) return;
     _debounce?.cancel();
     final generation = ++_generation;
+    final target = preserveWindow && _items.length > _pageSize ? _items.length : _pageSize;
     _loading = true;
     _loadingMore = false;
     _error = null;
     notifyListeners();
     try {
-      final results = await _vault.search(
-        query: _query, type: _type, sort: _sort, limit: _pageSize, offset: 0,
-      );
-      if (_disposed || generation != _generation) return;
+      final results = <MediaItem>[];
+      var more = true;
+      while (results.length < target && more) {
+        final limit = (target - results.length).clamp(1, 500);
+        final page = await _vault.search(query: _query, type: _type,
+          sort: _sort, tagFilter: _tagFilter, limit: limit, offset: results.length);
+        if (_disposed || generation != _generation) return;
+        results.addAll(page);
+        more = page.length == limit;
+      }
       _items..clear()..addAll(results);
-      _hasMore = results.length == _pageSize;
+      _hasMore = more;
     } catch (error) {
       if (_disposed || generation != _generation) return;
       _error = error.toString();
@@ -102,7 +118,8 @@ class ArchiveProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final results = await _vault.search(
-        query: _query, type: _type, sort: _sort, limit: _pageSize, offset: offset,
+        query: _query, type: _type, sort: _sort, tagFilter: _tagFilter,
+        limit: _pageSize, offset: offset,
       );
       if (_disposed || generation != _generation) return;
       _items.addAll(results);
@@ -120,8 +137,9 @@ class ArchiveProvider extends ChangeNotifier {
 
   Future<bool> setPinned(MediaItem item) async {
     try {
+      final generation = _generation;
       final result = await _vault.setPinned(item.id, !item.isPinned);
-      if (result) await refresh();
+      if (result) await _afterChange(item.id, generation);
       return result;
     } catch (error) {
       _report(error);
@@ -136,10 +154,11 @@ class ArchiveProvider extends ChangeNotifier {
     required List<String> tags,
   }) async {
     try {
+      final generation = _generation;
       final changed = await _vault.updateMetadata(
         id: id, title: title, description: description, tags: tags,
       );
-      if (changed) await refresh();
+      if (changed) await _afterChange(id, generation);
       return changed;
     } catch (error) {
       _report(error);
@@ -149,13 +168,59 @@ class ArchiveProvider extends ChangeNotifier {
 
   Future<bool> deleteItem(String id) async {
     try {
+      final generation = _generation;
       final removed = await _vault.deleteItem(id);
-      if (removed) await refresh();
+      if (removed && !_disposed) {
+        if (generation == _generation && !_loading && !_loadingMore &&
+            _items.any((item) => item.id == id)) {
+          _items.removeWhere((item) => item.id == id);
+          _error = null;
+          notifyListeners();
+        } else {
+          await refresh(preserveWindow: true);
+        }
+      }
       return removed;
     } catch (error) {
       _report(error);
       return false;
     }
+  }
+
+  Future<void> _afterChange(String id, int generation) async {
+    if (_disposed) return;
+    // With pagination or a text/tag query, requery the existing window:
+    // a mutation can change membership or move a pinned item across a page boundary.
+    if (generation != _generation || _loading || _loadingMore || _hasMore ||
+        _query.isNotEmpty || _tagFilter != null || _sort == ArchiveSort.title) {
+      await refresh(preserveWindow: true);
+      return;
+    }
+    final updated = await _vault.getById(id);
+    if (_disposed) return;
+    if (generation != _generation || _loading || _loadingMore) {
+      await refresh(preserveWindow: true);
+      return;
+    }
+    final index = _items.indexWhere((item) => item.id == id);
+    if (updated == null || index < 0) {
+      await refresh(preserveWindow: true);
+      return;
+    }
+    _items[index] = updated;
+    _items.sort((a, b) {
+      if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+      if (_sort == ArchiveSort.largest) {
+        final size = b.fileSize.compareTo(a.fileSize);
+        if (size != 0) return size;
+      }
+      final ascending = _sort == ArchiveSort.oldest;
+      final time = ascending ? a.createdAt.compareTo(b.createdAt)
+        : b.createdAt.compareTo(a.createdAt);
+      return time != 0 ? time : (ascending ? a.id.compareTo(b.id) : b.id.compareTo(a.id));
+    });
+    _error = null;
+    notifyListeners();
   }
 
   // Reuse the established vault operations and refresh just once per batch.
@@ -178,7 +243,7 @@ class ArchiveProvider extends ChangeNotifier {
         // Continue with other files; the UI reports the failed count.
       }
     }
-    await refresh();
+    await refresh(preserveWindow: true);
     return completed;
   }
 

@@ -12,7 +12,7 @@ class ThumbnailService {
     required String mediaId,
     required MediaFileType fileType,
   }) async {
-    if (fileType != MediaFileType.image && fileType != MediaFileType.video) {
+    if (fileType == MediaFileType.other) {
       return null;
     }
     await Directory(outputDirectory).create(recursive: true);
@@ -20,9 +20,12 @@ class ThumbnailService {
     try {
       if (await output.exists()) await output.delete();
       final ok = await _channel.invokeMethod<bool>(
-        fileType == MediaFileType.image
-            ? 'createImageThumbnail'
-            : 'createVideoThumbnail',
+        switch (fileType) {
+          MediaFileType.image => 'createImageThumbnail',
+          MediaFileType.video => 'createVideoThumbnail',
+          MediaFileType.pdf => 'createPdfThumbnail',
+          MediaFileType.other => throw StateError('Unsupported thumbnail type'),
+        },
         <String, Object>{
           'sourcePath': sourcePath,
           'destinationPath': output.path,

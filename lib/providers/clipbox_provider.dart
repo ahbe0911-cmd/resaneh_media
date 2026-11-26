@@ -26,8 +26,14 @@ class ClipboxProvider extends ChangeNotifier {
   bool get hasMore => _hasMore;
 
   void setQuery(String query) {
+    if (_query == query) return;
     _query = query;
     ++_generation;
+    _items.clear();
+    _loading = true;
+    _loadingMore = false;
+    _hasMore = false;
+    _error = null;
     _debounce?.cancel();
     notifyListeners();
     _debounce = Timer(const Duration(milliseconds: 250), () {
@@ -35,17 +41,27 @@ class ClipboxProvider extends ChangeNotifier {
     });
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool preserveWindow = false}) async {
     if (_disposed) return;
+    _debounce?.cancel();
     final generation = ++_generation;
+    final target = preserveWindow && _items.length > _pageSize ? _items.length : _pageSize;
     _loading = true;
+    _loadingMore = false;
     _error = null;
     notifyListeners();
     try {
-      final result = await _repo.search(query: _query, limit: _pageSize);
-      if (generation != _generation || _disposed) return;
+      final result = <ClipEntry>[];
+      var more = true;
+      while (result.length < target && more) {
+        final limit = (target - result.length).clamp(1, 500);
+        final page = await _repo.search(query: _query, limit: limit, offset: result.length);
+        if (generation != _generation || _disposed) return;
+        result.addAll(page);
+        more = page.length == limit;
+      }
       _items..clear()..addAll(result);
-      _hasMore = result.length == _pageSize;
+      _hasMore = more;
     } catch (error) {
       if (generation == _generation && !_disposed) _error = '$error';
     } finally {
@@ -79,22 +95,65 @@ class ClipboxProvider extends ChangeNotifier {
 
   Future<void> add(String title, String body) async {
     await _repo.add(title: title, body: body);
-    await refresh();
+    await refresh(preserveWindow: true);
   }
 
   Future<void> update(ClipEntry entry, String title, String body) async {
-    await _repo.update(id: entry.id, title: title, body: body);
-    await refresh();
+    final generation = _generation;
+    if (!await _repo.update(id: entry.id, title: title, body: body)) {
+      throw StateError('متن پیدا نشد');
+    }
+    await _afterChange(entry.id, generation);
   }
 
   Future<void> togglePin(ClipEntry entry) async {
-    await _repo.setPinned(entry.id, !entry.isPinned);
-    await refresh();
+    final generation = _generation;
+    if (!await _repo.setPinned(entry.id, !entry.isPinned)) {
+      throw StateError('متن پیدا نشد');
+    }
+    await _afterChange(entry.id, generation);
   }
 
   Future<void> remove(ClipEntry entry) async {
-    await _repo.delete(entry.id);
-    await refresh();
+    final generation = _generation;
+    if (!await _repo.delete(entry.id)) throw StateError('متن پیدا نشد');
+    if (_disposed) return;
+    if (generation == _generation && !_loading && !_loadingMore &&
+        _items.any((item) => item.id == entry.id)) {
+      _items.removeWhere((item) => item.id == entry.id);
+      _error = null;
+      notifyListeners();
+    } else {
+      await refresh(preserveWindow: true);
+    }
+  }
+
+  Future<void> _afterChange(String id, int generation) async {
+    if (_disposed) return;
+    if (generation != _generation || _loading || _loadingMore ||
+        _hasMore || _query.isNotEmpty) {
+      await refresh(preserveWindow: true);
+      return;
+    }
+    final updated = await _repo.getById(id);
+    if (_disposed) return;
+    if (generation != _generation || _loading || _loadingMore) {
+      await refresh(preserveWindow: true);
+      return;
+    }
+    final index = _items.indexWhere((item) => item.id == id);
+    if (updated == null || index < 0) {
+      await refresh(preserveWindow: true);
+      return;
+    }
+    _items[index] = updated;
+    _items.sort((a, b) {
+      if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+      final time = b.createdAt.compareTo(a.createdAt);
+      return time != 0 ? time : b.id.compareTo(a.id);
+    });
+    _error = null;
+    notifyListeners();
   }
 
   @override

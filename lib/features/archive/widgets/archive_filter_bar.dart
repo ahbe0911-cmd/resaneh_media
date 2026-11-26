@@ -8,7 +8,8 @@ import '../../../providers/settings_provider.dart';
 class ArchiveFilterBar extends StatelessWidget {
   const ArchiveFilterBar({super.key, required this.type, required this.sort,
     required this.layout, required this.onType, required this.onSort,
-    required this.onToggleLayout, this.enabled = true});
+    required this.onToggleLayout, this.enabled = true,
+    this.tagLabel, this.onTag, this.onClearTag});
 
   final MediaFileType? type;
   final ArchiveSort sort;
@@ -17,6 +18,8 @@ class ArchiveFilterBar extends StatelessWidget {
   final ValueChanged<ArchiveSort> onSort;
   final VoidCallback onToggleLayout;
   final bool enabled;
+  final String? tagLabel;
+  final VoidCallback? onTag, onClearTag;
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +31,14 @@ class ArchiveFilterBar extends StatelessWidget {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsetsDirectional.fromSTEB(16, 4, 16, 4),
           children: [
+            Padding(padding: const EdgeInsetsDirectional.only(end: 7),
+              child: InputChip(
+                avatar: const Icon(Icons.label_outline, size: 17),
+                label: Text(tagLabel ?? 'برچسب'),
+                selected: tagLabel != null,
+                onPressed: enabled ? onTag : null,
+                onDeleted: enabled && tagLabel != null ? onClearTag : null,
+              )),
             for (final value in <MediaFileType?>[null, ...MediaFileType.values])
               Padding(
                 padding: const EdgeInsetsDirectional.only(end: 7),
