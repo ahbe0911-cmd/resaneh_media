@@ -95,7 +95,7 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
   }
 
   void _onScroll() {
-    if (!_scroll.hasClients || !widget.active || _batchBusy) return;
+    if (!_scroll.hasClients || !widget.active || _batchBusy || _settings.isBusy) return;
     if (_scroll.position.extentAfter < 400) {
       unawaited(_archive.loadMore());
     }

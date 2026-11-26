@@ -34,6 +34,8 @@ class FactoryResetService {
     }
     final journal = File(p.join(root.path, '.resaneh_restore_journal.json'));
     if (await journal.exists()) await journal.delete();
+    final temporaryJournal = File('${journal.path}.tmp');
+    if (await temporaryJournal.exists()) await temporaryJournal.delete();
     await _lock.clearForFactoryReset();
     final preferences = await SharedPreferences.getInstance();
     await preferences.clear();

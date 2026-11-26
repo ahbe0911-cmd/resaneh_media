@@ -7,6 +7,8 @@ import 'resaneh_app.dart';
 Future<void> bootstrap(FlavorConfig flavor) async {
   WidgetsFlutterBinding.ensureInitialized();
   // Recover interrupted restore before any SQLite connection is opened.
-  await BackupService().recoverInterruptedRestore();
+  final backup = BackupService();
+  await backup.recoverInterruptedRestore();
+  await backup.clearAbandonedScratch();
   runApp(ResanehApp(config: flavor));
 }

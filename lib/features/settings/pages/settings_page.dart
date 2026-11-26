@@ -16,6 +16,8 @@ import '../../../providers/clipbox_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../services/backup/backup_documents_channel.dart';
 import '../../../services/backup/backup_service.dart';
+import '../../../services/backup/backup_cipher.dart';
+import '../widgets/backup_password_dialog.dart';
 import '../../../services/storage/factory_reset_service.dart';
 import '../../../services/storage/storage_analyzer.dart';
 import '../../../services/storage/vault_maintenance_service.dart';
@@ -84,23 +86,54 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  void _backupProgress(double? fraction, String stage) {
+    if (!mounted) return;
+    setState(() {
+      _maintenanceProgress = fraction;
+      _maintenanceLabel = stage;
+    });
+  }
+
   Future<void> _export() async {
+    final mode = await showDialog<bool>(context: context, builder: (ctx) =>
+      SimpleDialog(title: const Text('نوع نسخه پشتیبان'), children: [
+        SimpleDialogOption(onPressed: () => Navigator.pop(ctx, false),
+          child: const ListTile(leading: Icon(Icons.archive_outlined),
+            title: Text('ZIP معمولی'),
+            subtitle: Text('بدون رمز؛ فایل‌ها برای دارنده بکاپ قابل خواندن هستند.'))),
+        SimpleDialogOption(onPressed: () => Navigator.pop(ctx, true),
+          child: const ListTile(leading: Icon(Icons.enhanced_encryption_outlined),
+            title: Text('بکاپ رمزگذاری‌شده'),
+            subtitle: Text('AES-256-GCM؛ نیازمند رمز عبور برای بازیابی'))),
+      ]));
+    if (!mounted || mode == null) return;
+    String? password;
+    if (mode) {
+      password = await showDialog<String>(context: context,
+        builder: (_) => const BackupPasswordDialog(confirmPassword: true));
+      if (!mounted || password == null) return;
+    }
     await _busy(() async {
       File? zip;
+      final service = context.read<BackupService>();
       try {
-        zip = await context.read<BackupService>().createBackup(
+        zip = await service.createBackup(
           applicationId: widget.flavor.applicationId,
+          password: password, onProgress: _backupProgress,
         );
+        if (!mounted) return;
         final date = DateTime.now().toIso8601String().substring(0, 10);
+        final extension = password == null ? 'zip' : 'rmb';
+        _backupProgress(null, 'در انتظار ذخیره و انتقال فایل');
         final exported = await _documents.exportZip(
           sourcePath: zip.path,
-          suggestedName: 'Resaneh-${widget.flavor.flavorName}-$date.zip',
+          suggestedName: 'Resaneh-${widget.flavor.flavorName}-$date.$extension',
         );
         if (exported) _message('نسخه پشتیبان در محل انتخاب‌شده ذخیره شد.');
       } catch (error) {
         _message('پشتیبان‌گیری ناموفق بود: $error');
       } finally {
-        if (zip != null) await context.read<BackupService>().deleteExportTemp(zip);
+        if (zip != null) await service.deleteExportTemp(zip);
       }
     });
   }
@@ -108,7 +141,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _restore() async {
     final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
       title: const Text('بازیابی کامل اطلاعات'),
-      content: const Text('با بازیابی، تمام فایل‌ها، کلیپ‌باکس و تنظیمات این برنامه با اطلاعات ZIP جایگزین می‌شوند. ابتدا از اطلاعات فعلی بکاپ بگیرید. رمز PIN دستگاه داخل ZIP نیست.'),
+      content: const Text('تمام فایل‌ها، کلیپ‌باکس و تنظیمات آرشیو با داده‌های بکاپ ZIP یا RMB جایگزین می‌شوند. ابتدا از اطلاعات فعلی بکاپ بگیرید. رمز PIN و تنظیمات امنیتی دستگاه در بکاپ نیستند.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
         FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('انتخاب فایل بکاپ')),
@@ -116,23 +149,37 @@ class _SettingsPageState extends State<SettingsPage> {
     ));
     if (confirm != true || !mounted) return;
     await _busy(() async {
-      final source = await _documents.importZip();
-      if (source == null) return;
-      final file = File(source);
+      File? file;
+      final service = context.read<BackupService>();
       try {
-        await context.read<BackupService>().restoreBackup(
-          zip: file,
-          applicationId: widget.flavor.applicationId,
+        _backupProgress(null, 'در انتظار انتخاب و انتقال بکاپ');
+        final source = await _documents.importZip();
+        if (source == null) return;
+        file = File(source);
+        if (!mounted) return;
+        final encrypted = await BackupCipher.isEncrypted(file);
+        if (!mounted) return;
+        String? password;
+        if (encrypted) {
+          password = await showDialog<String>(context: context,
+            builder: (_) => const BackupPasswordDialog(confirmPassword: false));
+          if (!mounted || password == null) return;
+        }
+        await service.restoreBackup(
+          zip: file, applicationId: widget.flavor.applicationId,
+          password: password, onProgress: _backupProgress,
         );
         if (!mounted) return;
         await context.read<SettingsProvider>().reload();
+        if (!mounted) return;
         await context.read<ArchiveProvider>().refresh();
+        if (!mounted) return;
         await context.read<ClipboxProvider>().refresh();
         _message('بازیابی با موفقیت انجام شد.');
       } catch (error) {
         _message('بازیابی ناموفق بود؛ قبل از ادامه وضعیت داده‌ها را بررسی کنید: $error');
       } finally {
-        if (await file.exists()) await file.delete();
+        if (file != null && await file.exists()) await file.delete();
       }
     });
   }
@@ -414,8 +461,8 @@ class _SettingsPageState extends State<SettingsPage> {
             Card(child: Column(children: [
               ListTile(
                 leading: const Icon(Icons.archive_outlined),
-                title: const Text('ساخت بکاپ ZIP'),
-                subtitle: const Text('آرشیو فایل‌ها، دیتابیس، کلیپ‌باکس و تنظیمات'),
+                title: const Text('ساخت نسخه پشتیبان'),
+                subtitle: const Text('ZIP معمولی یا بکاپ رمزگذاری‌شده RMB'),
                 enabled: !_working,
                 onTap: _export,
               ),
@@ -423,7 +470,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ListTile(
                 leading: const Icon(Icons.settings_backup_restore_rounded),
                 title: const Text('بازیابی بکاپ در این برنامه'),
-                subtitle: const Text('جایگزین کردن کامل داده‌ها از ZIP معتبر'),
+                subtitle: const Text('بازیابی از ZIP قدیمی یا بکاپ رمزگذاری‌شده RMB'),
                 enabled: !_working,
                 onTap: _restore,
               ),
@@ -547,7 +594,11 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 CircularProgressIndicator(value: _maintenanceProgress),
                 const SizedBox(height: 14),
-                Text(_maintenanceLabel ?? 'در حال پردازش اطلاعات...'),
+                Text(_maintenanceLabel ?? 'در حال پردازش اطلاعات...', textAlign: TextAlign.center),
+                if (_maintenanceProgress != null) ...[
+                  const SizedBox(height: 6),
+                  Text(JalaliFormatter.toPersianDigits('${(_maintenanceProgress! * 100).round()}٪')),
+                ],
               ]),
             ))),
           )),
