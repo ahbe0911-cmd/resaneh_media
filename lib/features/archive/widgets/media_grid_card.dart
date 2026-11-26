@@ -3,101 +3,93 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../../app/resaneh_brand_theme.dart';
-import '../../../core/utils/file_classifier.dart';
-import '../../../core/utils/jalali_formatter.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/utils/jalali_formatter.dart';
 import '../../../data/models/media_item.dart';
+import 'media_thumbnail.dart';
 
 class MediaGridCard extends StatelessWidget {
   const MediaGridCard({
-    super.key,
-    required this.item,
-    required this.thumbnail,
-    required this.onOpen,
-    required this.onShare,
-    required this.onEdit,
-    required this.onPin,
-    required this.onDelete,
+    super.key, required this.item, required this.thumbnail,
+    required this.onOpen, required this.onShare, required this.onEdit,
+    required this.onPin, required this.onDelete, this.onDetails,
+    this.onLongPress, this.selectionMode = false, this.selected = false,
   });
   final MediaItem item;
   final File? thumbnail;
-  final VoidCallback onOpen;
-  final VoidCallback onShare;
-  final VoidCallback onEdit;
-  final VoidCallback onPin;
-  final VoidCallback onDelete;
+  final VoidCallback onOpen, onShare, onEdit, onPin, onDelete;
+  final VoidCallback? onDetails, onLongPress;
+  final bool selectionMode, selected;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final brand = ResanehBrandTheme.of(context);
-    final icon = Formatters.typeIcon(item.fileType);
-    final iconColor = brand.mediaColor(item.fileType);
+    final accent = brand.mediaColor(item.fileType);
     return Card(
       margin: EdgeInsets.zero,
-      elevation: 0.5,
+      color: selected ? scheme.primaryContainer : brand.cardSurface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(brand.cardRadius),
-        side: BorderSide(color: scheme.outlineVariant),
+        side: BorderSide(color: selected ? scheme.primary : scheme.outlineVariant,
+          width: selected ? 1.5 : 1),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(
-          child: InkWell(
-            onTap: onOpen,
-            child: Stack(fit: StackFit.expand, children: [
-              Container(color: iconColor.withValues(alpha: 0.10),
-                child: thumbnail == null
-                    ? Center(child: Icon(icon, color: iconColor, size: 44))
-                    : Image.file(thumbnail!, fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Center(child:
-                          Icon(icon, size: 44, color: iconColor))),
-              ),
-              if (item.isPinned) Positioned(
-                top: 8, right: 8,
-                child: CircleAvatar(radius: 15,
-                  backgroundColor: scheme.surface.withValues(alpha: .9),
-                  child: Icon(Icons.push_pin_rounded, size: 16,
-                    color: scheme.primary)),
-              ),
-              if (item.fileType == MediaFileType.video)
-                const Center(child: Icon(Icons.play_circle_fill_rounded,
-                  size: 48, color: Colors.white)),
+      child: InkWell(
+        onTap: onOpen,
+        onLongPress: onLongPress,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Expanded(child: Stack(fit: StackFit.expand, children: [
+            MediaThumbnail(item: item, file: thumbnail),
+            PositionedDirectional(top: 8, end: 8, child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+              decoration: BoxDecoration(color: scheme.surface,
+                borderRadius: BorderRadius.circular(8)),
+              child: Text(Formatters.typeLabel(item.fileType),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: accent, fontWeight: FontWeight.w700)))),
+            if (selectionMode || item.isPinned)
+              PositionedDirectional(top: 8, start: 8, child: CircleAvatar(
+                radius: 15, backgroundColor: scheme.surface,
+                child: Icon(selectionMode
+                  ? (selected ? Icons.check_circle_rounded : Icons.circle_outlined)
+                  : Icons.push_pin_rounded, size: 20, color: scheme.primary),
+              )),
+          ])),
+          Padding(padding: const EdgeInsetsDirectional.fromSTEB(10, 8, 10, 2),
+            child: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700))),
+          Padding(padding: const EdgeInsetsDirectional.fromSTEB(10, 2, 10, 2),
+            child: Text(Formatters.fileSize(item.fileSize),
+              style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant))),
+          Padding(padding: const EdgeInsetsDirectional.fromSTEB(10, 2, 10, 4),
+            child: Text('${JalaliFormatter.formatShortDate(item.createdAt)} · '
+                '${JalaliFormatter.formatTime(item.createdAt)}', maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant))),
+          if (!selectionMode) Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(tooltip: 'اشتراک‌گذاری', onPressed: onShare,
+                icon: const Icon(Icons.ios_share_rounded, size: 19)),
+              IconButton(tooltip: item.isPinned ? 'برداشتن سنجاق' : 'سنجاق',
+                onPressed: onPin, icon: Icon(item.isPinned ? Icons.push_pin_rounded
+                  : Icons.push_pin_outlined, size: 19)),
+              PopupMenuButton<String>(tooltip: 'عملیات فایل',
+                onSelected: (value) {
+                  if (value == 'details') onDetails?.call();
+                  if (value == 'edit') onEdit();
+                  if (value == 'delete') onDelete();
+                },
+                itemBuilder: (_) => [
+                  if (onDetails != null) const PopupMenuItem(value: 'details',
+                    child: Text('مشخصات فایل')),
+                  const PopupMenuItem(value: 'edit', child: Text('ویرایش')),
+                  const PopupMenuItem(value: 'delete', child: Text('حذف')),
+                ]),
             ]),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
-          child: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-        ),
-        Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(10, 3, 10, 2),
-          child: Text('ثبت: ' + JalaliFormatter.formatShortDate(item.createdAt) + ' · ' + JalaliFormatter.formatTime(item.createdAt),
-            maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              fontSize: 10, color: scheme.onSurfaceVariant)),
-        ),
-        Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-          IconButton(tooltip: 'اشتراک‌گذاری', onPressed: onShare,
-            icon: const Icon(Icons.ios_share_rounded, size: 20)),
-          IconButton(tooltip: 'سنجاق', onPressed: onPin,
-            icon: Icon(item.isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-              color: item.isPinned ? scheme.primary : scheme.onSurfaceVariant, size: 20)),
-          PopupMenuButton<String>(
-            tooltip: 'مدیریت',
-            icon: const Icon(Icons.more_vert_rounded, size: 20),
-            onSelected: (value) {
-              if (value == 'edit') onEdit();
-              if (value == 'delete') onDelete();
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'edit', child: Text('ویرایش')),
-              PopupMenuItem(value: 'delete', child: Text('حذف')),
-            ],
-          ),
         ]),
-      ]),
+      ),
     );
   }
 }

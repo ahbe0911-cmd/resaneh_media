@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/utils/jalali_formatter.dart';
+import '../../../app/resaneh_brand_theme.dart';
 import '../../../data/models/clip_entry.dart';
 import '../../../providers/clipbox_provider.dart';
 import '../widgets/clip_editor_sheet.dart';
@@ -15,10 +16,10 @@ class ClipboxPage extends StatefulWidget {
   final String? initialText;
 
   @override
-  State<ClipboxPage> createState() => _ClipboxPageState();
+  ClipboxPageState createState() => ClipboxPageState();
 }
 
-class _ClipboxPageState extends State<ClipboxPage> {
+class ClipboxPageState extends State<ClipboxPage> {
   final _search = TextEditingController();
   final _scroll = ScrollController();
   late final ClipboxProvider _provider;
@@ -27,6 +28,7 @@ class _ClipboxPageState extends State<ClipboxPage> {
   void initState() {
     super.initState();
     _provider = context.read<ClipboxProvider>();
+    _search.text = _provider.query;
     _scroll.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -54,6 +56,8 @@ class _ClipboxPageState extends State<ClipboxPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text),
         duration: const Duration(seconds: 2)));
   }
+
+  Future<void> receiveText(String value) => _edit(initialBody: value);
 
   Future<void> _edit({ClipEntry? item, String? initialBody}) async {
     final draft = await showModalBottomSheet<ClipDraft>(
@@ -111,8 +115,12 @@ class _ClipboxPageState extends State<ClipboxPage> {
   Widget build(BuildContext context) {
     final state = context.watch<ClipboxProvider>();
     final theme = Theme.of(context);
+    final brand = ResanehBrandTheme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('کلیپ‌باکس')),
+      appBar: AppBar(title: const Text('کلیپ‌باکس'),
+        actions: [Padding(padding: const EdgeInsetsDirectional.only(end: 16),
+          child: Center(child: Text(JalaliFormatter.formatShortDate(DateTime.now()),
+            style: theme.textTheme.labelMedium)))],),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _edit(),
         icon: const Icon(Icons.add_rounded),
@@ -166,8 +174,8 @@ class _ClipboxPageState extends State<ClipboxPage> {
                             margin: const EdgeInsets.only(bottom: 10),
                             elevation: 0,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(18),
-                              side: BorderSide(color: theme.dividerColor),
+                              borderRadius: BorderRadius.circular(brand.cardRadius),
+                              side: BorderSide(color: theme.colorScheme.outlineVariant),
                             ),
                             child: Padding(padding: const EdgeInsets.all(13),
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

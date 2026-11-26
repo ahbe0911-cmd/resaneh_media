@@ -19,8 +19,11 @@ import '../../../services/storage/storage_analyzer.dart';
 import '../widgets/pin_settings_dialog.dart';
 
 class SettingsPage extends StatefulWidget {
-  const SettingsPage({super.key, required this.flavor});
+  const SettingsPage({super.key, required this.flavor,
+    this.active = true, this.onReset});
   final FlavorConfig flavor;
+  final bool active;
+  final VoidCallback? onReset;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -37,6 +40,14 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     _refreshReport();
     _package = PackageInfo.fromPlatform();
+  }
+
+  @override
+  void didUpdateWidget(covariant SettingsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active && !_working) {
+      _refreshReport();
+    }
   }
 
   void _refreshReport() {
@@ -181,7 +192,11 @@ class _SettingsPageState extends State<SettingsPage> {
           await context.read<ArchiveProvider>().refresh();
           await context.read<ClipboxProvider>().refresh();
           if (!mounted) return;
-          Navigator.of(context).pop();
+          if (widget.onReset != null) {
+            widget.onReset!();
+          } else if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
           _message('برنامه به حالت روز اول برگشت.');
         } catch (error) {
           _message('ریست کامل نشد: $error');

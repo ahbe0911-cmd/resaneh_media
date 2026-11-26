@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import '../data/repositories/app_settings_repository.dart';
 import '../data/repositories/clip_repository.dart';
 import '../data/repositories/tag_repository.dart';
-import '../features/archive/pages/archive_home_page.dart';
+import '../features/shell/app_shell_page.dart';
 import '../features/security/app_lock_gate.dart';
 import '../providers/app_lock_controller.dart';
 import '../providers/archive_provider.dart';
@@ -75,7 +75,7 @@ class ResanehApp extends StatelessWidget {
           textDirection: TextDirection.rtl,
           child: AppLockGate(child: child ?? const SizedBox.shrink()),
         ),
-        home: ArchiveHomePage(config: config),
+        home: AppShellPage(config: config),
       ),
     ),
   );

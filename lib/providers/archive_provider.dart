@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../core/utils/file_classifier.dart';
+import '../core/utils/archive_sort.dart';
 import '../data/models/media_item.dart';
 import '../services/vault/vault_service.dart';
 
@@ -13,6 +14,7 @@ class ArchiveProvider extends ChangeNotifier {
   final List<MediaItem> _items = [];
   String _query = '';
   MediaFileType? _type;
+  ArchiveSort _sort = ArchiveSort.newest;
   String? _error;
   bool _loading = false;
   bool _loadingMore = false;
@@ -24,6 +26,7 @@ class ArchiveProvider extends ChangeNotifier {
   List<MediaItem> get items => List.unmodifiable(_items);
   String get query => _query;
   MediaFileType? get selectedType => _type;
+  ArchiveSort get sort => _sort;
   String? get error => _error;
   bool get isLoading => _loading;
   bool get isLoadingMore => _loadingMore;
@@ -32,9 +35,11 @@ class ArchiveProvider extends ChangeNotifier {
   Future<void> initialize() => refresh();
 
   void setQuery(String value) {
+    if (value == _query) return;
     _query = value;
     _generation++; // Discard responses to the previous query.
     _debounce?.cancel();
+    _clearForNewCriteria();
     notifyListeners();
     _debounce = Timer(const Duration(milliseconds: 300), () {
       unawaited(refresh());
@@ -44,12 +49,28 @@ class ArchiveProvider extends ChangeNotifier {
   Future<void> setType(MediaFileType? value) async {
     if (value == _type) return;
     _type = value;
-    _debounce?.cancel();
+    _clearForNewCriteria();
     await refresh();
+  }
+
+  Future<void> setSort(ArchiveSort value) async {
+    if (value == _sort) return;
+    _sort = value;
+    _clearForNewCriteria();
+    await refresh();
+  }
+
+  void _clearForNewCriteria() {
+    _items.clear();
+    _loading = true;
+    _loadingMore = false;
+    _hasMore = false;
+    _error = null;
   }
 
   Future<void> refresh() async {
     if (_disposed) return;
+    _debounce?.cancel();
     final generation = ++_generation;
     _loading = true;
     _loadingMore = false;
@@ -57,7 +78,7 @@ class ArchiveProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final results = await _vault.search(
-        query: _query, type: _type, limit: _pageSize, offset: 0,
+        query: _query, type: _type, sort: _sort, limit: _pageSize, offset: 0,
       );
       if (_disposed || generation != _generation) return;
       _items..clear()..addAll(results);
@@ -81,7 +102,7 @@ class ArchiveProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final results = await _vault.search(
-        query: _query, type: _type, limit: _pageSize, offset: offset,
+        query: _query, type: _type, sort: _sort, limit: _pageSize, offset: offset,
       );
       if (_disposed || generation != _generation) return;
       _items.addAll(results);
@@ -135,6 +156,30 @@ class ArchiveProvider extends ChangeNotifier {
       _report(error);
       return false;
     }
+  }
+
+  // Reuse the established vault operations and refresh just once per batch.
+  Future<Set<String>> setPinnedBatch(
+    Iterable<MediaItem> items, bool pinned,
+  ) => _performBatch(items.map((item) => item.id),
+      (id) => _vault.setPinned(id, pinned));
+
+  Future<Set<String>> deleteBatch(Iterable<String> ids) =>
+      _performBatch(ids, _vault.deleteItem);
+
+  Future<Set<String>> _performBatch(
+    Iterable<String> ids, Future<bool> Function(String) operation,
+  ) async {
+    final completed = <String>{};
+    for (final id in ids.toSet()) {
+      try {
+        if (await operation(id)) completed.add(id);
+      } catch (_) {
+        // Continue with other files; the UI reports the failed count.
+      }
+    }
+    await refresh();
+    return completed;
   }
 
   void _report(Object error) {

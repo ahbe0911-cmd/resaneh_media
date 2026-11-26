@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/utils/file_classifier.dart';
+import '../../core/utils/archive_sort.dart';
 import '../../core/utils/persian_normalizer.dart';
 import '../../data/models/media_item.dart';
 import '../../data/repositories/media_repository.dart';
@@ -157,10 +158,11 @@ class VaultService {
   }
 
   Future<List<MediaItem>> search({
-    String query = '', MediaFileType? type, int limit = 100, int offset = 0,
+    String query = '', MediaFileType? type, ArchiveSort sort = ArchiveSort.newest,
+    int limit = 100, int offset = 0,
   }) async {
     await initialize();
-    return _repository.search(query: query, type: type, limit: limit, offset: offset);
+    return _repository.search(query: query, type: type, sort: sort, limit: limit, offset: offset);
   }
 
   Future<bool> updateMetadata({

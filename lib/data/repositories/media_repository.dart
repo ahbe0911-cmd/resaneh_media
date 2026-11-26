@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import '../../core/utils/file_classifier.dart';
+import '../../core/utils/archive_sort.dart';
 import '../../core/utils/persian_normalizer.dart';
 import '../database/app_database.dart';
 import '../models/media_item.dart';
@@ -39,6 +40,7 @@ class MediaRepository {
   Future<List<MediaItem>> search({
     String query = '',
     MediaFileType? type,
+    ArchiveSort sort = ArchiveSort.newest,
     int limit = 100,
     int offset = 0,
   }) async {
@@ -72,7 +74,7 @@ class MediaRepository {
     final clause = conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
     final rows = await db.rawQuery(
       '''SELECT m.* FROM media_items m $clause
-         ORDER BY m.is_pinned DESC, m.created_at DESC, m.id DESC
+         ORDER BY m.is_pinned DESC, ${sort.sqlOrder}
          LIMIT ? OFFSET ?''',
       [...args, limit.clamp(1, 500), offset < 0 ? 0 : offset],
     );

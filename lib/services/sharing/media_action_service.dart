@@ -26,6 +26,24 @@ class MediaActionService {
     ));
   }
 
+  Future<ShareResult> shareFiles(
+    List<MediaItem> items, VaultService vault,
+  ) async {
+    if (items.isEmpty) throw ArgumentError('هیچ فایلی انتخاب نشده است');
+    final files = <XFile>[];
+    final names = <String>[];
+    for (final item in items) {
+      final file = await _source(item, vault);
+      files.add(XFile(file.path, mimeType: item.mimeType));
+      names.add(item.originalName);
+    }
+    return SharePlus.instance.share(ShareParams(
+      title: 'فایل‌های آرشیو',
+      files: files,
+      fileNameOverrides: names,
+    ));
+  }
+
   Future<OpenResult> openExternal(MediaItem item, VaultService vault) async {
     final file = await _source(item, vault);
     return OpenFilex.open(file.path, type: item.mimeType);
