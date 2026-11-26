@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
@@ -16,6 +18,7 @@ import '../../../services/backup/backup_documents_channel.dart';
 import '../../../services/backup/backup_service.dart';
 import '../../../services/storage/factory_reset_service.dart';
 import '../../../services/storage/storage_analyzer.dart';
+import '../../../services/storage/vault_maintenance_service.dart';
 import '../widgets/pin_settings_dialog.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -33,6 +36,9 @@ class _SettingsPageState extends State<SettingsPage> {
   late Future<StorageReport> _report;
   late Future<PackageInfo> _package;
   bool _working = false;
+  bool _securityWorking = false;
+  double? _maintenanceProgress;
+  String? _maintenanceLabel;
   final _documents = const BackupDocumentsChannel();
 
   @override
@@ -61,16 +67,18 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<T?> _busy<T>(Future<T?> Function() task) async {
-    if (_working) return null;
-    setState(() => _working = true);
     final settings = context.read<SettingsProvider>();
+    if (_working || settings.isBusy) return null;
     settings.beginMaintenance();
+    setState(() => _working = true);
     try {
       return await task();
     } finally {
       settings.endMaintenance();
       if (mounted) setState(() {
         _working = false;
+        _maintenanceProgress = null;
+        _maintenanceLabel = null;
         _refreshReport();
       });
     }
@@ -147,6 +155,111 @@ class _SettingsPageState extends State<SettingsPage> {
     } catch (error) {
       _message('تغییر رمز انجام نشد: $error');
     }
+  }
+
+  Future<String?> _askCurrentPin() async {
+    final field = TextEditingController();
+    try {
+      return await showDialog<String>(context: context, builder: (ctx) =>
+        StatefulBuilder(builder: (_, update) => AlertDialog(
+          title: const Text('تأیید رمز فعلی'),
+          content: TextField(controller: field, obscureText: true,
+            keyboardType: TextInputType.number, maxLength: 4,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            enableSuggestions: false, autocorrect: false,
+            decoration: const InputDecoration(labelText: 'PIN چهاررقمی'),
+            onChanged: (_) => update(() {})),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('انصراف')),
+            FilledButton(onPressed: field.text.length == 4
+              ? () => Navigator.pop(ctx, field.text) : null,
+              child: const Text('تأیید')),
+          ],
+        )));
+    } finally {
+      field.dispose();
+    }
+  }
+
+  Future<void> _changeBiometrics(bool value) async {
+    if (_working || _securityWorking) return;
+    final lock = context.read<AppLockController>();
+    setState(() => _securityWorking = true);
+    try {
+      final pin = value ? await _askCurrentPin() : null;
+      if (!mounted || (value && pin == null)) return;
+      await lock.configureBiometrics(value, pin: pin);
+      _message(value ? 'ورود بیومتریک فعال شد.' : 'ورود بیومتریک غیرفعال شد.');
+    } catch (error) {
+      _message('تغییر ورود بیومتریک انجام نشد: $error');
+    } finally {
+      if (mounted) setState(() => _securityWorking = false);
+    }
+  }
+
+  Future<void> _changeSecurity(Future<void> Function() change) async {
+    if (_working || _securityWorking) return;
+    setState(() => _securityWorking = true);
+    try {
+      await change();
+    } catch (error) {
+      _message('ذخیره تنظیمات امنیتی ناموفق بود: $error');
+    } finally {
+      if (mounted) setState(() => _securityWorking = false);
+    }
+  }
+
+  Future<void> _cleanupVault() async {
+    final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('پاک‌سازی فایل‌های بدون رکورد'),
+      content: const Text('فقط فایل‌های شناخته‌شده بدون رکورد که بیش از ۱۰ دقیقه از آخرین تغییرشان گذشته و برچسب‌های بلااستفاده حذف می‌شوند. فایل‌های ثبت‌شده دست‌نخورده می‌مانند. این حذف بازگشت ندارد.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('پاک‌سازی')),
+      ],
+    ));
+    if (!mounted || confirm != true) return;
+    await _busy(() async {
+      try {
+        final result = await context.read<VaultMaintenanceService>().cleanup();
+        if (!mounted) return;
+        String n(int value) => JalaliFormatter.toPersianDigits('$value');
+        _message('${n(result.files)} فایل و ${n(result.tags)} برچسب حذف شد؛ '
+          '${Formatters.fileSize(result.bytes)} آزاد شد. '
+          '${n(result.skipped)} مورد محفوظ و ${n(result.failed)} خطا.');
+      } catch (error) {
+        _message('پاک‌سازی ناموفق بود: $error');
+      }
+    });
+  }
+
+  Future<void> _rebuildThumbnails() async {
+    final confirm = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('بازسازی پیش‌نمایش‌ها'),
+      content: const Text('پیش‌نمایش همه تصاویر، ویدیوها و PDFها دوباره تولید می‌شود. اصل فایل‌ها حذف یا تغییر نمی‌کند. اگر تولید پیش‌نمایش ناموفق باشد، تصویر قبلی حفظ می‌شود.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('شروع بازسازی')),
+      ],
+    ));
+    if (!mounted || confirm != true) return;
+    await _busy(() async {
+      try {
+        final archive = context.read<ArchiveProvider>();
+        final result = await context.read<VaultMaintenanceService>().rebuildThumbnails(
+          onProgress: (done, total) {
+            if (mounted) setState(() {
+              _maintenanceProgress = total == 0 ? 1 : done / total;
+              _maintenanceLabel = 'بازسازی ${JalaliFormatter.toPersianDigits('$done / $total')}';
+            });
+          });
+        await archive.refresh(preserveWindow: true);
+        _message(JalaliFormatter.toPersianDigits(
+          '${result.rebuilt} پیش‌نمایش بازسازی شد؛ ${result.failed} مورد ناموفق.'));
+      } catch (error) {
+        _message('بازسازی ناموفق بود: $error');
+      }
+    });
   }
 
   Future<void> _reset() async {
@@ -284,6 +397,19 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             ),
             const SizedBox(height: 18),
+            Text('نگهداری و بهینه‌سازی', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            Card(child: Column(children: [
+              ListTile(leading: const Icon(Icons.cleaning_services_outlined),
+                title: const Text('پاک‌سازی فایل‌های یتیم'),
+                subtitle: const Text('فایل‌های بدون رکورد و برچسب‌های بلااستفاده'),
+                enabled: !_working && !settings.isBusy, onTap: _cleanupVault),
+              const Divider(height: 1),
+              ListTile(leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('بازسازی پیش‌نمایش‌ها'),
+                subtitle: const Text('اصلاح تصاویر قدیمی و ساخت تصویر PDF'),
+                enabled: !_working && !settings.isBusy, onTap: _rebuildThumbnails),
+            ])),
+            const SizedBox(height: 18),
             Text('پشتیبان‌گیری و بازیابی', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
             Card(child: Column(children: [
               ListTile(
@@ -311,7 +437,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 subtitle: const Text('محافظت چهاررقمی از ورود به برنامه'),
                 trailing: IconButton(
                   tooltip: lock.enabled ? 'غیرفعال‌سازی' : 'فعال‌سازی',
-                  onPressed: _working ? null : () => _configurePin(
+                  onPressed: _working || _securityWorking ? null : () => _configurePin(
                     lock.enabled ? PinAction.disable : PinAction.enable),
                   icon: Icon(lock.enabled ? Icons.toggle_on_rounded : Icons.toggle_off_outlined),
                 ),
@@ -320,8 +446,40 @@ class _SettingsPageState extends State<SettingsPage> {
                 leading: const Icon(Icons.password_rounded),
                 title: const Text('تغییر رمز چهاررقمی'),
                 enabled: !_working,
-                onTap: () => _configurePin(PinAction.change),
+                onTap: _securityWorking ? null : () => _configurePin(PinAction.change),
               ),
+              if (lock.enabled) ...[
+                const Divider(height: 1),
+                SwitchListTile(secondary: const Icon(Icons.fingerprint_rounded),
+                  title: const Text('ورود بیومتریک'),
+                  subtitle: Text(lock.biometricAvailable ? 'اثر انگشت یا چهره ثبت‌شده دستگاه'
+                    : 'بیومتریک در دستگاه در دسترس نیست؛ PIN همچنان فعال است.'),
+                  value: lock.biometricEnabled,
+                  onChanged: _working || _securityWorking ||
+                    (!lock.biometricAvailable && !lock.biometricEnabled) ? null : _changeBiometrics),
+                ListTile(leading: const Icon(Icons.timer_outlined),
+                  title: const Text('زمان قفل خودکار'),
+                  subtitle: const Text('پس از خروج از برنامه'),
+                  trailing: DropdownButton<int>(value: lock.timeoutMinutes,
+                    items: const [
+                      DropdownMenuItem(value: 0, child: Text('فوری')),
+                      DropdownMenuItem(value: 1, child: Text('۱ دقیقه')),
+                      DropdownMenuItem(value: 5, child: Text('۵ دقیقه')),
+                    ],
+                    onChanged: _working || _securityWorking ? null : (value) {
+                      if (value != null) _changeSecurity(() => lock.setTimeout(value));
+                    })),
+                SwitchListTile(secondary: const Icon(Icons.screenshot_monitor_outlined),
+                  title: const Text('جلوگیری از تصویربرداری صفحه'),
+                  subtitle: const Text('محافظت از اسکرین‌شات و پیش‌نمایش برنامه‌های اخیر'),
+                  value: lock.secureScreen,
+                  onChanged: _working || _securityWorking ? null : (value) =>
+                    _changeSecurity(() => lock.setSecureScreen(value))),
+                ListTile(leading: const Icon(Icons.lock_clock_outlined),
+                  title: const Text('همین حالا قفل کن'),
+                  enabled: !_working && !_securityWorking,
+                  onTap: lock.lock),
+              ],
             ])),
             const SizedBox(height: 18),
             Text('ظاهر برنامه', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
@@ -384,12 +542,12 @@ class _SettingsPageState extends State<SettingsPage> {
           ]),
           if (_working) Positioned.fill(child: Container(
             color: Colors.black38,
-            child: const Center(child: Card(child: Padding(
-              padding: EdgeInsets.all(26),
+            child: Center(child: Card(child: Padding(
+              padding: const EdgeInsets.all(26),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 14),
-                Text('در حال پردازش اطلاعات...'),
+                CircularProgressIndicator(value: _maintenanceProgress),
+                const SizedBox(height: 14),
+                Text(_maintenanceLabel ?? 'در حال پردازش اطلاعات...'),
               ]),
             ))),
           )),

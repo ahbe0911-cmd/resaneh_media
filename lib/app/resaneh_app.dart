@@ -17,6 +17,7 @@ import '../services/security/app_lock_service.dart';
 import '../services/sharing/media_action_service.dart';
 import '../services/storage/factory_reset_service.dart';
 import '../services/storage/storage_analyzer.dart';
+import '../services/storage/vault_maintenance_service.dart';
 import '../services/vault/vault_service.dart';
 import 'app_theme.dart';
 import 'flavor_config.dart';
@@ -37,6 +38,7 @@ class ResanehApp extends StatelessWidget {
       Provider<AppLockService>(create: (_) => AppLockService()),
       Provider<BackupService>(create: (_) => BackupService()),
       Provider<StorageAnalyzer>(create: (_) => StorageAnalyzer()),
+      Provider<VaultMaintenanceService>(create: (_) => VaultMaintenanceService()),
       Provider<FactoryResetService>(create: (ctx) => FactoryResetService(
         lockService: ctx.read<AppLockService>(),
         incomingFileService: ctx.read<IncomingFileService>(),

@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../data/database/app_database.dart';
+import 'vault_inventory.dart';
 
 class StorageReport {
   const StorageReport({
@@ -51,10 +52,22 @@ class StorageAnalyzer {
     final clips = await db.rawQuery('SELECT COUNT(*) AS count FROM clip_entries');
     final clipCount = (clips.first['count'] as num).toInt();
     final root = await getApplicationDocumentsDirectory();
-    final thumbs = await _directorySize(Directory(p.join(root.path, 'thumbnails')));
+    final refs = await VaultInventory.references(db);
+    var thumbs = 0, orphanBytes = 0;
+    await for (final file in VaultInventory.files(root)) {
+      final relative = p.relative(file.path, from: root.path);
+      try {
+        final size = await file.length();
+        if (!refs.contains(relative)) {
+          orphanBytes += size;
+        } else if (relative.startsWith('thumbnails/')) {
+          thumbs += size;
+        }
+      } on FileSystemException {
+        // A concurrent import/deletion may have removed a file during scanning.
+      }
+    }
     final databaseSize = await _directorySize(Directory(p.join(root.path, 'database')));
-    final vaultSize = await _directorySize(Directory(p.join(root.path, 'vault')));
-    final referenced = (sizes.values.fold<int>(0, (sum, value) => sum + value));
     return StorageReport(
       photoBytes: sizes['image'] ?? 0,
       videoBytes: sizes['video'] ?? 0,
@@ -64,7 +77,7 @@ class StorageAnalyzer {
       databaseBytes: databaseSize,
       clipCount: clipCount,
       mediaCount: count,
-      orphanBytes: vaultSize > referenced ? vaultSize - referenced : 0,
+      orphanBytes: orphanBytes,
     );
   }
 

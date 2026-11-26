@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../app/flavor_config.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/app_lock_controller.dart';
 import '../archive/pages/archive_home_page.dart';
 import '../clipbox/pages/clipbox_page.dart';
 import '../settings/pages/settings_page.dart';
@@ -35,11 +36,15 @@ class _AppShellPageState extends State<AppShellPage> {
 
   void _scheduleTextEditor() {
     if (!mounted || _drainingText || _pendingText.isEmpty ||
-        context.read<SettingsProvider>().isBusy) return;
+        context.read<SettingsProvider>().isBusy ||
+        !context.read<AppLockController>().isReady ||
+        !context.read<AppLockController>().unlocked) return;
     _drainingText = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         if (!mounted || context.read<SettingsProvider>().isBusy ||
+            !context.read<AppLockController>().isReady ||
+            !context.read<AppLockController>().unlocked ||
             _clipKey.currentState == null || _pendingText.isEmpty) return;
         _select(1);
         // The clip tab is kept mounted even when it is not selected.
@@ -59,7 +64,8 @@ class _AppShellPageState extends State<AppShellPage> {
   @override
   Widget build(BuildContext context) {
     final busy = context.select<SettingsProvider, bool>((s) => s.isBusy);
-    if (!busy && _pendingText.isNotEmpty) _scheduleTextEditor();
+    final unlocked = context.select<AppLockController, bool>((l) => l.isReady && l.unlocked);
+    if (!busy && unlocked && _pendingText.isNotEmpty) _scheduleTextEditor();
     final keyboard = MediaQuery.viewInsetsOf(context).bottom > 0;
     return PopScope(
       canPop: _index == 0 && !busy,

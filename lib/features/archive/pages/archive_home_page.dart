@@ -13,6 +13,7 @@ import '../../../data/models/media_item.dart';
 import '../../../data/models/media_tag.dart';
 import '../../../data/repositories/tag_repository.dart';
 import '../../../providers/archive_provider.dart';
+import '../../../providers/app_lock_controller.dart';
 import '../../../providers/settings_provider.dart';
 import '../widgets/archive_filter_bar.dart';
 import '../widgets/media_grid_card.dart';
@@ -44,6 +45,9 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
   late final IncomingFileService _incoming;
   late final MediaActionService _mediaActions;
   late final ShareIntentService _shareIntent;
+  late final SettingsProvider _settings;
+  late final AppLockController _lock;
+  final _disposeSignal = Completer<void>();
   late final ScrollController _scroll;
   bool _picking = false;
   bool _batchBusy = false;
@@ -55,6 +59,8 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
   void initState() {
     super.initState();
     _archive = context.read<ArchiveProvider>();
+    _settings = context.read<SettingsProvider>();
+    _lock = context.read<AppLockController>();
     _search.text = _archive.query;
     _vault = context.read<VaultService>();
     _incoming = context.read<IncomingFileService>();
@@ -75,6 +81,7 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
 
   @override
   void dispose() {
+    if (!_disposeSignal.isCompleted) _disposeSignal.complete();
     unawaited(_shareIntent.dispose());
     _scroll.dispose();
     _search.dispose();
@@ -118,6 +125,33 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
       return;
     }
     if (files.isEmpty) return;
+    // A share intent can arrive while settings is performing maintenance or
+    // while the app is locked. Keep staged data until both conditions clear.
+    if (_settings.isBusy || !_lock.isReady || !_lock.unlocked) {
+      final ready = Completer<void>();
+      void changed() {
+        if (!_settings.isBusy && _lock.isReady && _lock.unlocked && !ready.isCompleted) {
+          ready.complete();
+        }
+      }
+      _settings.addListener(changed);
+      _lock.addListener(changed);
+      changed();
+      try {
+        await Future.any([ready.future, _disposeSignal.future]);
+      } finally {
+        _settings.removeListener(changed);
+        _lock.removeListener(changed);
+      }
+      if (!mounted) {
+        await _incoming.cleanup(files);
+        return;
+      }
+      if (_settings.isBusy || !_lock.unlocked) {
+        await _openImport(files);
+        return;
+      }
+    }
     await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => ImportFilesPage(files: files),
     ));
