@@ -16,6 +16,29 @@ class AppLockService {
   static const _failureKey = 'resaneh_pin_failures_v1';
   static const _blockedUntilKey = 'resaneh_pin_blocked_until_v1';
   static const _iterations = 120000;
+  static const _biometricKey = 'resaneh_biometric_v1';
+  static const _timeoutKey = 'resaneh_lock_timeout_v1';
+  static const _screenKey = 'resaneh_secure_screen_v1';
+
+  Future<bool> get biometricsEnabled async =>
+      await _storage.read(key: _biometricKey) == 'true';
+
+  Future<int> get timeoutMinutes async {
+    final value = int.tryParse(await _storage.read(key: _timeoutKey) ?? '');
+    return value == 1 || value == 5 ? value! : 0;
+  }
+
+  Future<bool> get secureScreen async =>
+      await _storage.read(key: _screenKey) != 'false';
+
+  Future<void> setBiometrics(bool enabled) =>
+      _storage.write(key: _biometricKey, value: '$enabled');
+
+  Future<void> setTimeout(int minutes) =>
+      _storage.write(key: _timeoutKey, value: '$minutes');
+
+  Future<void> setSecureScreen(bool enabled) =>
+      _storage.write(key: _screenKey, value: '$enabled');
 
   Future<bool> get enabled async => (await _storage.read(key: _verifierKey)) != null;
 
@@ -43,6 +66,7 @@ class AppLockService {
 
   Future<void> removePin(String currentPin) async {
     if (!await verify(currentPin)) throw StateError('رمز فعلی صحیح نیست.');
+    await _storage.delete(key: _biometricKey);
     await _storage.delete(key: _verifierKey);
     await _clearFailures();
   }

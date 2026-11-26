@@ -9,7 +9,9 @@ import android.graphics.pdf.PdfRenderer
 import android.media.ExifInterface
 import android.os.ParcelFileDescriptor
 import android.media.MediaMetadataRetriever
-import io.flutter.embedding.android.FlutterActivity
+import android.os.Bundle
+import android.view.WindowManager
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -18,7 +20,7 @@ import java.io.IOException
 import java.util.concurrent.Executors
 import kotlin.math.min
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     companion object {
         private const val THUMBNAIL_CHANNEL = "com.resaneh.media/thumbnail"
     }
@@ -26,10 +28,30 @@ class MainActivity : FlutterActivity() {
     private val thumbnailExecutor = Executors.newFixedThreadPool(2)
     private lateinit var backupDocumentsChannel: BackupDocumentsChannel
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // Fail closed until Flutter has loaded the device-local policy.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        super.onCreate(savedInstanceState)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         backupDocumentsChannel = BackupDocumentsChannel(this)
         backupDocumentsChannel.attach(flutterEngine)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.resaneh.media/security")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "setSecure") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                if (call.argument<Boolean>("enabled") != false) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+                result.success(true)
+            }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, THUMBNAIL_CHANNEL)
             .setMethodCallHandler { call, result ->

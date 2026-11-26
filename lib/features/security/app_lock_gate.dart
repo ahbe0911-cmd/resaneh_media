@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/app_lock_controller.dart';
+import 'pin_pad_widget.dart';
 
 class AppLockGate extends StatefulWidget {
   const AppLockGate({super.key, required this.child});
@@ -13,19 +16,27 @@ class AppLockGate extends StatefulWidget {
 }
 
 class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
+  late final AppLockController _lock;
+  bool _covered = false;
+
   @override
   void initState() {
     super.initState();
+    _lock = context.read<AppLockController>();
     WidgetsBinding.instance.addObserver(this);
-    context.read<AppLockController>().initialize();
+    unawaited(_lock.initialize());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden) {
-      context.read<AppLockController>().lock();
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _lock.onBackground();
+    } else if (state == AppLifecycleState.resumed) {
+      _lock.onForeground();
     }
+    final covered = state != AppLifecycleState.resumed;
+    if (_covered != covered && mounted) setState(() => _covered = covered);
+    if (covered && _lock.enabled) FocusManager.instance.primaryFocus?.unfocus();
   }
 
   @override
@@ -37,16 +48,25 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final lock = context.watch<AppLockController>();
-    // Keep the Navigator mounted under the opaque lock screen. Replacing it
-    // would destroy active routes when Android's document picker pauses us.
+    final blocked = !lock.isReady || !lock.unlocked || (_covered && lock.enabled);
     return Stack(fit: StackFit.expand, children: [
-      widget.child,
+      ExcludeSemantics(excluding: blocked, child: ExcludeFocus(
+        excluding: blocked, child: AbsorbPointer(
+          absorbing: blocked, child: widget.child,
+        ),
+      )),
       if (!lock.isReady)
         const Positioned.fill(child: Scaffold(
           body: Center(child: CircularProgressIndicator()),
         )),
       if (lock.isReady && !lock.unlocked)
         const Positioned.fill(child: _UnlockPage()),
+      if (_covered && lock.enabled)
+        Positioned.fill(child: AbsorbPointer(child: ColoredBox(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          child: Center(child: Icon(Icons.lock_rounded,
+            color: Theme.of(context).colorScheme.primary, size: 48)),
+        ))),
     ]);
   }
 }
@@ -59,81 +79,75 @@ class _UnlockPage extends StatefulWidget {
 }
 
 class _UnlockPageState extends State<_UnlockPage> {
-  final _pin = TextEditingController();
+  String _pin = '';
   bool _checking = false;
   String? _error;
 
-  @override
-  void dispose() {
-    _pin.dispose();
-    super.dispose();
+  void _digit(String value) {
+    if (_checking || _pin.length >= 4) return;
+    unawaited(HapticFeedback.selectionClick());
+    setState(() { _pin += value; _error = null; });
+    if (_pin.length == 4) unawaited(_submit());
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({bool biometric = false}) async {
     if (_checking) return;
-    if (!RegExp(r'^\d{4}$').hasMatch(_pin.text)) {
-      setState(() => _error = 'رمز چهاررقمی را وارد کنید.');
-      return;
-    }
+    if (!biometric && _pin.length != 4) return;
+    final lock = context.read<AppLockController>();
     setState(() { _checking = true; _error = null; });
     try {
-      final ok = await context.read<AppLockController>().unlock(_pin.text);
-      if (!ok && mounted) setState(() => _error = 'رمز نادرست است.');
+      final ok = biometric ? await lock.unlockBiometric() : await lock.unlock(_pin);
+      if (!ok && mounted) {
+        unawaited(HapticFeedback.heavyImpact());
+        setState(() => _error = biometric
+          ? 'احراز هویت انجام نشد؛ از PIN استفاده کنید.' : 'رمز نادرست است.');
+      }
     } catch (error) {
-      if (mounted) setState(() => _error = '$error');
+      if (mounted) {
+        unawaited(HapticFeedback.heavyImpact());
+        setState(() => _error = biometric
+          ? 'ورود بیومتریک در دسترس نیست؛ PIN را وارد کنید.' : '$error');
+      }
     } finally {
-      _pin.clear();
-      if (mounted) setState(() => _checking = false);
+      if (mounted) setState(() { _pin = ''; _checking = false; });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
-        body: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(28),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.lock_rounded, size: 68, color: scheme.primary),
-                const SizedBox(height: 20),
-                Text('آرشیو خصوصی', style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 10),
-                const Text('برای ورود، رمز چهاررقمی برنامه را وارد کنید.'),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _pin,
-                  autofocus: true,
-                  obscureText: true,
-                  obscuringCharacter: '●',
-                  enableSuggestions: false,
-                  autocorrect: false,
-                  keyboardType: TextInputType.number,
-                  textAlign: TextAlign.center,
-                  maxLength: 4,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  onSubmitted: (_) => _submit(),
-                  decoration: const InputDecoration(labelText: 'رمز ورود'),
-                ),
-                if (_error != null) ...[
-                  Text(_error!, textAlign: TextAlign.center,
-                      style: TextStyle(color: scheme.error)),
-                  const SizedBox(height: 12),
-                ],
-                FilledButton.icon(
-                  onPressed: _checking ? null : _submit,
-                  icon: const Icon(Icons.lock_open_rounded),
-                  label: Text(_checking ? 'در حال بررسی...' : 'باز کردن برنامه'),
-                ),
-              ]),
+    final lock = context.watch<AppLockController>();
+    return PopScope(canPop: false, child: Scaffold(
+      body: SafeArea(child: Center(child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 340),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(width: 72, height: 72,
+              decoration: BoxDecoration(color: scheme.primaryContainer,
+                borderRadius: BorderRadius.circular(24)),
+              child: Icon(Icons.lock_person_rounded, size: 36,
+                color: scheme.onPrimaryContainer)),
+            const SizedBox(height: 18),
+            Text('آرشیو خصوصی', style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 8),
+            Text('رمز چهاررقمی را وارد کنید', style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(height: 24),
+            PinPadWidget(length: _pin.length, busy: _checking, hasError: _error != null,
+              onDigit: _digit,
+              onDelete: () => setState(() {
+                if (_pin.isNotEmpty) _pin = _pin.substring(0, _pin.length - 1);
+                _error = null;
+              }),
+              onBiometric: lock.biometricEnabled && lock.biometricAvailable
+                ? () => unawaited(_submit(biometric: true)) : null,
             ),
-          ),
+            const SizedBox(height: 14),
+            if (_checking) const LinearProgressIndicator(minHeight: 2),
+            if (_error != null) Text(_error!, textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.error)),
+          ]),
         ),
-      ),
-    );
+      ))),
+    ));
   }
 }
