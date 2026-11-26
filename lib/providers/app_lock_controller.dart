@@ -198,8 +198,8 @@ class AppLockController extends ChangeNotifier {
   }
 
   Future<void> enable(String pin) async {
-    await _service.setBiometrics(false);
     await _service.setPin(pin);
+    await _service.setBiometrics(false);
     _biometric = false;
     _enabled = true;
     _unlocked = !_background;
