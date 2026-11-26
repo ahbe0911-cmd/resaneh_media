@@ -149,9 +149,25 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
       if (!mounted) return;
       switch (item.fileType) {
         case MediaFileType.image:
+          final images = _archive.items
+              .where((entry) => entry.fileType == MediaFileType.image)
+              .map((entry) => ViewerImage(
+                item: entry, filePath: _vault.resolveStoredFile(entry.relativePath).path,
+              )).toList();
+          var index = images.indexWhere((entry) => entry.item.id == item.id);
+          if (index < 0) {
+            images.insert(0, ViewerImage(item: item, filePath: file.path));
+            index = 0;
+          }
           await Navigator.push<void>(context, MaterialPageRoute(
-            builder: (_) => ImageViewerPage(filePath: file.path, title: item.title,
-              heroTag: 'media_${item.id}'),
+            builder: (_) => ImageViewerPage(
+              images: images,
+              initialIndex: index,
+              onShare: (entry) async {
+                await _mediaActions.shareFile(entry, _vault);
+              },
+              onTogglePin: _archive.setPinned,
+            ),
           ));
           break;
         case MediaFileType.video:
