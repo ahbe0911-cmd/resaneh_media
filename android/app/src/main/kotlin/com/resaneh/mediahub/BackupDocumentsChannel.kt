@@ -51,7 +51,7 @@ class BackupDocumentsChannel(private val activity: Activity) {
                         try {
                             val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                                 addCategory(Intent.CATEGORY_OPENABLE)
-                                type = "application/zip"
+                                type = if (name.endsWith(".rmb", ignoreCase = true)) "application/octet-stream" else "application/zip"
                                 putExtra(Intent.EXTRA_TITLE, name.replace('/', '_'))
                             }
                             activity.startActivityForResult(intent, EXPORT_REQUEST)

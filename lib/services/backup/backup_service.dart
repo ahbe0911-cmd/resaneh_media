@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
@@ -10,6 +11,9 @@ import 'package:uuid/uuid.dart';
 
 import '../../data/database/app_database.dart';
 import '../../data/database/search_index.dart';
+import 'backup_cipher.dart';
+
+typedef BackupProgress = void Function(double? fraction, String stage);
 
 class BackupService {
   BackupService({AppDatabase? database})
@@ -34,7 +38,8 @@ class BackupService {
     return dir;
   }
 
-  Future<File> createBackup({required String applicationId}) async {
+  Future<File> createBackup({required String applicationId,
+    String? password, BackupProgress? onProgress}) async {
     final scratch = await _scratch();
     final root = await _root();
     final zip = File(p.join(scratch.path, 'resaneh-backup.zip'));
@@ -42,6 +47,7 @@ class BackupService {
     await snapshot.create(recursive: true);
 
     try {
+      onProgress?.call(null, 'آماده‌سازی نسخه ثابت اطلاعات');
       // Closing SQLite makes the DB copy consistent, including WAL checkpoints.
       await _database.close();
       try {
@@ -70,16 +76,69 @@ class BackupService {
         await copy.close();
       }
 
+      await _runWorker(_pack, [snapshot.path, scratch.path, zip.path, applicationId],
+        onProgress: (value, label) => onProgress?.call(
+          value == null ? null : value * (password == null ? 0.98 : 0.65), label));
+      if (password != null) {
+        final encrypted = File(p.join(scratch.path, 'resaneh-backup.rmb'));
+        await _runWorker(_encrypt, [zip.path, encrypted.path, password],
+          onProgress: (value, label) => onProgress?.call(
+            value == null ? null : 0.65 + value * 0.34, label));
+        await zip.delete();
+        onProgress?.call(1, 'بکاپ آماده ذخیره است');
+        return encrypted;
+      }
+      onProgress?.call(1, 'بکاپ آماده ذخیره است');
+      return zip;
+    } catch (_) {
+      await scratch.delete(recursive: true);
+      rethrow;
+    } finally {
+      if (await snapshot.exists()) await snapshot.delete(recursive: true);
+    }
+  }
+
+  static Future<void> _runWorker(
+    Future<void> Function(List<String>, SendPort) task, List<String> args,
+    {BackupProgress? onProgress}
+  ) async {
+    final port = ReceivePort();
+    final subscription = port.listen((message) {
+      if (message is List && message.length == 2) {
+        onProgress?.call((message[0] as num?)?.toDouble(), message[1] as String);
+      }
+    });
+    final send = port.sendPort;
+    try {
+      await Isolate.run(() => task(args, send));
+    } finally {
+      await subscription.cancel();
+      port.close();
+    }
+  }
+
+  static Future<void> _pack(List<String> args, SendPort send) async {
+    final snapshot = Directory(args[0]);
+    final scratch = Directory(args[1]);
+    final zip = File(args[2]);
+    final applicationId = args[3];
       final files = await _filesRecursively(snapshot);
       final entries = <Map<String, Object?>>[];
+      var done = 0;
+      final total = files.length;
+      send.send([0.0, 'محاسبه هش فایل‌ها']);
       for (final file in files) {
         final rel = p.relative(file.path, from: snapshot.path).replaceAll('\\', '/');
-        if (!_allowedFilePath('data/$rel')) continue;
+        if (!_allowedFilePath('data/$rel')) {
+          done++;
+          continue;
+        }
         entries.add({
           'path': 'data/$rel',
           'bytes': await file.length(),
           'sha256': (await sha256.bind(file.openRead()).first).toString(),
         });
+        send.send([total == 0 ? 0.0 : 0.4 * ++done / total, 'محاسبه هش فایل‌ها']);
       }
       if (!entries.any((entry) => entry['path'] == 'data/database/resaneh_vault.db')) {
         throw StateError('پایگاه داده در نسخه پشتیبان وجود ندارد.');
@@ -97,22 +156,34 @@ class BackupService {
       encoder.create(zip.path);
       try {
         await encoder.addFile(manifest, 'manifest.json');
+        var packed = 0;
         for (final entry in entries) {
           final name = entry['path']! as String;
           final source = File(p.join(snapshot.path, name.substring('data/'.length)));
           await encoder.addFile(source, name);
+          send.send([0.4 + 0.6 * ++packed / entries.length, 'فشرده‌سازی ZIP']);
         }
       } finally {
         await encoder.close();
       }
-      return zip;
-    } catch (_) {
-      await scratch.delete(recursive: true);
-      rethrow;
-    } finally {
-      if (await snapshot.exists()) await snapshot.delete(recursive: true);
-    }
+
   }
+
+  static Future<void> _encrypt(List<String> args, SendPort send) async {
+    send.send([null, 'مشتق‌سازی کلید رمزگذاری']);
+    await BackupCipher.encrypt(File(args[0]), File(args[1]), args[2],
+      progress: (done, total) => send.send([done / total, 'رمزگذاری بکاپ']));
+  }
+
+  static Future<void> _decrypt(List<String> args, SendPort send) async {
+    send.send([null, 'بررسی رمز بکاپ']);
+    await BackupCipher.decrypt(File(args[0]), File(args[1]), args[2],
+      progress: (done, total) => send.send([done / total, 'رمزگشایی بکاپ']));
+  }
+
+  static Future<void> _unpack(List<String> args, SendPort send) =>
+      _extractValidatedZip(File(args[0]), Directory(args[1]), args[2],
+        (fraction, stage) => send.send([fraction, stage]));
 
   Future<void> deleteExportTemp(File zip) async {
     final directory = zip.parent;
@@ -122,25 +193,43 @@ class BackupService {
   Future<void> restoreBackup({
     required File zip,
     required String applicationId,
+    String? password, BackupProgress? onProgress,
   }) async {
     final scratch = await _scratch();
     final extracted = Directory(p.join(scratch.path, 'extracted'));
     await extracted.create(recursive: true);
     try {
-      await _extractValidatedZip(zip, extracted, applicationId);
+      final encrypted = await BackupCipher.isEncrypted(zip);
+      var source = zip;
+      if (encrypted) {
+        if (password == null) throw const FormatException('این بکاپ رمز دارد.');
+        source = File(p.join(scratch.path, 'decrypted.zip'));
+        await _runWorker(_decrypt, [zip.path, source.path, password],
+          onProgress: (value, stage) => onProgress?.call(
+            value == null ? null : value * 0.30, stage));
+      }
+      await _runWorker(_unpack, [source.path, extracted.path, applicationId],
+        onProgress: (value, stage) => onProgress?.call(value == null ? null :
+          (encrypted ? 0.30 + value * 0.55 : value * 0.85), stage));
+      if (encrypted) await source.delete();
+      onProgress?.call(null, 'اعتبارسنجی دیتابیس');
       final database = File(p.join(extracted.path, 'data', 'database', 'resaneh_vault.db'));
       await _validateSqlite(database, extracted);
+      onProgress?.call(null, 'جایگزینی ایمن اطلاعات');
       await _commitRestore(Directory(p.join(extracted.path, 'data')));
+      onProgress?.call(1, 'بازیابی کامل شد');
     } finally {
       if (await scratch.exists()) await scratch.delete(recursive: true);
     }
   }
 
-  Future<void> _extractValidatedZip(
+  static Future<void> _extractValidatedZip(
     File zip,
     Directory destination,
     String applicationId,
+    BackupProgress progress,
   ) async {
+    progress(null, 'خواندن ساختار ZIP');
     if (!await zip.exists()) throw StateError('فایل ZIP وجود ندارد.');
     final input = InputFileStream(zip.path);
     final actual = <String, int>{};
@@ -183,6 +272,7 @@ class BackupService {
           throw FormatException('حجم واقعی فایل با ZIP برابر نیست: $name');
         }
         actual[name] = diskSize;
+        progress(0.6 * count / archive.length, 'استخراج فایل‌ها');
       }
     } finally {
       input.closeSync();
@@ -217,6 +307,7 @@ class BackupService {
       final file = File(p.join(destination.path, p.joinAll(name.split('/'))));
       final digest = (await sha256.bind(file.openRead()).first).toString();
       if (digest != checksum) throw FormatException('فایل بکاپ آسیب دیده است: $name');
+      progress(0.6 + 0.4 * expected.length / rawEntries.length, 'اعتبارسنجی هش فایل‌ها');
     }
     if (!expected.contains('data/database/resaneh_vault.db') ||
         actual.length != expected.length + 1) {
@@ -224,7 +315,7 @@ class BackupService {
     }
   }
 
-  bool _allowedFilePath(String path) {
+  static bool _allowedFilePath(String path) {
     if (path == 'manifest.json') return true;
     if (path.contains('\\') || path.startsWith('/') || path.contains('//') ||
         path.split('/').any((segment) => segment.isEmpty || segment == '.' || segment == '..')) {
@@ -304,7 +395,9 @@ class BackupService {
       for (final folder in _collections) {
         hadOriginal[folder] = await Directory(p.join(root.path, folder)).exists();
       }
-      await journal.writeAsString(jsonEncode(hadOriginal), flush: true);
+      final temporaryJournal = File('${journal.path}.tmp');
+      await temporaryJournal.writeAsString(jsonEncode(hadOriginal), flush: true);
+      await temporaryJournal.rename(journal.path);
       try {
         await previous.create(recursive: true);
         for (final folder in _collections) {
@@ -338,6 +431,8 @@ class BackupService {
     final previous = Directory(p.join(root.path, _previousName));
     final stage = Directory(p.join(root.path, _stageName));
     if (!await journal.exists()) {
+      final temporaryJournal = File('${journal.path}.tmp');
+      if (await temporaryJournal.exists()) await temporaryJournal.delete();
       if (await previous.exists()) await previous.delete(recursive: true);
       if (await stage.exists()) await stage.delete(recursive: true);
       return;
@@ -380,7 +475,7 @@ class BackupService {
     }
   }
 
-  Future<List<File>> _filesRecursively(Directory directory) async {
+  static Future<List<File>> _filesRecursively(Directory directory) async {
     final result = <File>[];
     await for (final entity in directory.list(recursive: true, followLinks: false)) {
       if (entity is Link) throw StateError('پیوند نمادین در آرشیو مجاز نیست.');
