@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/utils/jalali_formatter.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../data/models/media_item.dart';
 
 class MediaDetailsSheet extends StatelessWidget {
@@ -24,25 +25,26 @@ class MediaDetailsSheet extends StatelessWidget {
               color: scheme.primary,
             )),
             const SizedBox(height: 12),
-            _row('نام اصلی', item.originalName),
-            _row('نوع', item.fileType.name),
-            _row('حجم', '${item.fileSize} بایت'),
-            _row('تاریخ ثبت', JalaliFormatter.formatDateTime(item.createdAt)),
-            if (item.description.isNotEmpty) _row('توضیحات', item.description),
-            if (item.tags.isNotEmpty) _row('برچسب‌ها', item.tags.join('، ')),
+            _row(context, 'نام اصلی', item.originalName),
+            _row(context, 'نوع', Formatters.typeLabel(item.fileType)),
+            _row(context, 'حجم', Formatters.fileSize(item.fileSize)),
+            _row(context, 'تاریخ ثبت', JalaliFormatter.formatDateTime(item.createdAt)),
+            if (item.description.isNotEmpty) _row(context, 'توضیحات', item.description),
+            if (item.tags.isNotEmpty) _row(context, 'برچسب‌ها', item.tags.join('، ')),
           ],
         ),
       ),
     );
   }
 
-  Widget _row(String key, String value) => Padding(
+  Widget _row(BuildContext context, String key, String value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 6),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(width: 94, child: Text(key)),
-        Expanded(child: Text(value)),
+        Expanded(child: Text(value,
+          style: Theme.of(context).textTheme.bodySmall)),
       ],
     ),
   );

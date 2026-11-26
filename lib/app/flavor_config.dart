@@ -26,10 +26,10 @@ class FlavorConfig {
     appName: 'رسانه کتابخانه',
     applicationId: 'com.resaneh.ketabkhaneh',
     description: 'آرشیو هوشمند رسانه و اسناد کتابخانه',
-    primaryColor: Color(0xFF075B45),
-    accentColor: Color(0xFFC9A45C),
+    primaryColor: Color(0xFF065F46),
+    accentColor: Color(0xFFC69749),
     darkPrimaryColor: Color(0xFF34D399),
-    darkAccentColor: Color(0xFFE8C77A),
+    darkAccentColor: Color(0xFFE5C07B),
   );
 
   static const kafinet = FlavorConfig(
@@ -37,10 +37,10 @@ class FlavorConfig {
     appName: 'رسانه کافی‌نت',
     applicationId: 'com.resaneh.kafinet',
     description: 'مدیریت هوشمند اسناد و فایل‌های کافی‌نت',
-    primaryColor: Color(0xFF273A8C),
-    accentColor: Color(0xFF16BFD0),
-    darkPrimaryColor: Color(0xFF93C5FD),
-    darkAccentColor: Color(0xFF67E8F9),
+    primaryColor: Color(0xFF1E3A8A),
+    accentColor: Color(0xFF06B6D4),
+    darkPrimaryColor: Color(0xFF60A5FA),
+    darkAccentColor: Color(0xFF22D3EE),
   );
 
   bool get isKetabkhaneh => flavorName == 'ketabkhaneh';

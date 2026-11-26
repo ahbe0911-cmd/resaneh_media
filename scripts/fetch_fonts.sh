@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 mkdir -p assets/fonts
 base='https://raw.githubusercontent.com/rastikerdar/vazirmatn/v33.003/fonts/ttf'
-for weight in Regular Bold; do
+for weight in Regular Medium SemiBold Bold ExtraBold; do
   destination="assets/fonts/Vazirmatn-${weight}.ttf"
   if [[ ! -s "$destination" ]]; then
     echo "Downloading Vazirmatn-${weight} from its official upstream release ..."

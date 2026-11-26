@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../../app/flavor_config.dart';
 import '../../../core/utils/file_classifier.dart';
 import '../../../core/utils/jalali_formatter.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../data/models/media_item.dart';
 import '../../../providers/archive_provider.dart';
 import '../../../providers/settings_provider.dart';
@@ -302,7 +303,7 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
                   if (state.selectedType != null)
                     InputChip(
                       avatar: const Icon(Icons.filter_alt_outlined, size: 16),
-                      label: Text(_typeLabel(state.selectedType)),
+                      label: Text(Formatters.typeLabel(state.selectedType, plural: true)),
                       onPressed: _openFilters,
                       onDeleted: () => unawaited(state.setType(null)),
                       visualDensity: VisualDensity.compact,
@@ -331,22 +332,6 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
     );
   }
 
-
-  String _typeLabel(MediaFileType? type) => switch (type) {
-    null => 'همه فایل‌ها',
-    MediaFileType.image => 'تصاویر',
-    MediaFileType.video => 'ویدیوها',
-    MediaFileType.pdf => 'اسناد PDF',
-    MediaFileType.other => 'سایر فایل‌ها',
-  };
-
-  IconData _typeIcon(MediaFileType? type) => switch (type) {
-    null => Icons.dashboard_customize_outlined,
-    MediaFileType.image => Icons.image_outlined,
-    MediaFileType.video => Icons.movie_outlined,
-    MediaFileType.pdf => Icons.picture_as_pdf_outlined,
-    MediaFileType.other => Icons.description_outlined,
-  };
 
   Future<void> _openFilters() async {
     final current = _archive.selectedType;
@@ -380,9 +365,9 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
                   borderRadius: BorderRadius.circular(13)),
                 tileColor: type == current
                   ? scheme.primaryContainer.withValues(alpha: .55) : null,
-                leading: Icon(_typeIcon(type),
+                leading: Icon(Formatters.typeIcon(type),
                   color: type == current ? scheme.primary : scheme.onSurfaceVariant),
-                title: Text(_typeLabel(type),
+                title: Text(Formatters.typeLabel(type, plural: true),
                   style: const TextStyle(fontWeight: FontWeight.w600)),
                 trailing: type == current
                     ? Icon(Icons.check_circle_rounded, color: scheme.primary)
@@ -488,7 +473,7 @@ class _ArchiveHomePageState extends State<ArchiveHomePage> {
                                   horizontal: 6, vertical: 3),
                                 leading: CircleAvatar(
                                   backgroundColor: theme.colorScheme.primaryContainer,
-                                  child: Icon(_typeIcon(item.fileType),
+                                  child: Icon(Formatters.typeIcon(item.fileType),
                                     color: theme.colorScheme.primary)),
                                 title: Text(item.title,
                                   maxLines: 1, overflow: TextOverflow.ellipsis),

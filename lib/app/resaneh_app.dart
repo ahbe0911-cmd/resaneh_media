@@ -56,8 +56,9 @@ class ResanehApp extends StatelessWidget {
         create: (ctx) => AppLockController(service: ctx.read<AppLockService>()),
       ),
     ],
-    child: Consumer<SettingsProvider>(
-      builder: (ctx, settings, _) => MaterialApp(
+    child: Selector<SettingsProvider, ThemeMode>(
+      selector: (_, settings) => settings.themeMode,
+      builder: (ctx, themeMode, _) => MaterialApp(
         debugShowCheckedModeBanner: false,
         title: config.appName,
         locale: const Locale('fa', 'IR'),
@@ -69,7 +70,7 @@ class ResanehApp extends StatelessWidget {
         ],
         theme: AppTheme.light(config),
         darkTheme: AppTheme.dark(config),
-        themeMode: settings.themeMode,
+        themeMode: themeMode,
         builder: (context, child) => Directionality(
           textDirection: TextDirection.rtl,
           child: AppLockGate(child: child ?? const SizedBox.shrink()),

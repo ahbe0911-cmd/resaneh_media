@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../../../app/resaneh_brand_theme.dart';
 import '../../../core/utils/file_classifier.dart';
 import '../../../core/utils/jalali_formatter.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../data/models/media_item.dart';
 
 class MediaItemCard extends StatelessWidget {
@@ -19,22 +21,16 @@ class MediaItemCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final (accent, symbol, typeName) = switch (item.fileType) {
-      MediaFileType.image => (
-        const Color(0xFF0C9974), Icons.image_outlined, 'عکس'),
-      MediaFileType.video => (
-        const Color(0xFF7F5AC7), Icons.smart_display_outlined, 'ویدیو'),
-      MediaFileType.pdf => (
-        const Color(0xFFD85855), Icons.picture_as_pdf_outlined, 'PDF'),
-      MediaFileType.other => (
-        const Color(0xFF51788B), Icons.description_outlined, 'سند'),
-    };
+    final brand = ResanehBrandTheme.of(context);
+    final accent = brand.mediaColor(item.fileType);
+    final symbol = Formatters.typeIcon(item.fileType);
+    final typeName = Formatters.typeLabel(item.fileType);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 11),
       decoration: BoxDecoration(
         color: scheme.surface,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(brand.cardRadius),
         border: Border.all(
           color: scheme.outlineVariant.withValues(alpha: .60)),
         boxShadow: [
@@ -44,7 +40,7 @@ class MediaItemCard extends StatelessWidget {
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(brand.cardRadius),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
@@ -146,7 +142,7 @@ class MediaItemCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Flexible(child: Text(
-                    JalaliFormatter.toPersianDigits(_size(item.fileSize)),
+                    Formatters.fileSize(item.fileSize),
                     maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: scheme.onSurfaceVariant))),
@@ -196,14 +192,5 @@ class MediaItemCard extends StatelessWidget {
     );
   }
 
-  String _size(int bytes) {
-    if (bytes < 1024) return bytes.toString() + ' B';
-    if (bytes < 1024 * 1024) {
-      return (bytes / 1024).toStringAsFixed(1) + ' KB';
-    }
-    if (bytes < 1024 * 1024 * 1024) {
-      return (bytes / (1024 * 1024)).toStringAsFixed(1) + ' MB';
-    }
-    return (bytes / (1024 * 1024 * 1024)).toStringAsFixed(2) + ' GB';
-  }
 }
+

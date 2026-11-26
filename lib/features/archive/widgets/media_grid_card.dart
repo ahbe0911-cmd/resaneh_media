@@ -2,8 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../../app/resaneh_brand_theme.dart';
 import '../../../core/utils/file_classifier.dart';
 import '../../../core/utils/jalali_formatter.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../data/models/media_item.dart';
 
 class MediaGridCard extends StatelessWidget {
@@ -25,28 +27,17 @@ class MediaGridCard extends StatelessWidget {
   final VoidCallback onPin;
   final VoidCallback onDelete;
 
-  IconData get icon => switch (item.fileType) {
-    MediaFileType.image => Icons.image_rounded,
-    MediaFileType.video => Icons.movie_rounded,
-    MediaFileType.pdf => Icons.picture_as_pdf_rounded,
-    MediaFileType.other => Icons.description_rounded,
-  };
-
-  Color get iconColor => switch (item.fileType) {
-    MediaFileType.image => const Color(0xFF16A34A),
-    MediaFileType.video => const Color(0xFF7C3AED),
-    MediaFileType.pdf => const Color(0xFFDC2626),
-    MediaFileType.other => const Color(0xFF0891B2),
-  };
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final brand = ResanehBrandTheme.of(context);
+    final icon = Formatters.typeIcon(item.fileType);
+    final iconColor = brand.mediaColor(item.fileType);
     return Card(
       margin: EdgeInsets.zero,
       elevation: 0.5,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(brand.cardRadius),
         side: BorderSide(color: scheme.outlineVariant),
       ),
       clipBehavior: Clip.antiAlias,
@@ -84,7 +75,8 @@ class MediaGridCard extends StatelessWidget {
           padding: const EdgeInsetsDirectional.fromSTEB(10, 3, 10, 2),
           child: Text('ثبت: ' + JalaliFormatter.formatShortDate(item.createdAt) + ' · ' + JalaliFormatter.formatTime(item.createdAt),
             maxLines: 1, overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 10, color: scheme.onSurfaceVariant)),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              fontSize: 10, color: scheme.onSurfaceVariant)),
         ),
         Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
           IconButton(tooltip: 'اشتراک‌گذاری', onPressed: onShare,

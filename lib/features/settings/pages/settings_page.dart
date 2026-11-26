@@ -5,6 +5,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/flavor_config.dart';
+import '../../../app/resaneh_brand_theme.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../core/utils/jalali_formatter.dart';
 import '../../../providers/app_lock_controller.dart';
 import '../../../providers/archive_provider.dart';
 import '../../../providers/clipbox_provider.dart';
@@ -189,21 +192,16 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  String _size(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-  }
 
   Widget _storagePanel(StorageReport r) {
     final total = r.total <= 0 ? 1 : r.total;
     final scheme = Theme.of(context).colorScheme;
+    final brand = ResanehBrandTheme.of(context);
     final values = <(String, int, Color)>[
-      ('عکس‌ها', r.photoBytes, const Color(0xFF16A34A)),
-      ('ویدیوها', r.videoBytes, const Color(0xFF7C3AED)),
-      ('PDF', r.pdfBytes, const Color(0xFFDC2626)),
-      ('سایر فایل‌ها', r.otherBytes, const Color(0xFF0891B2)),
+      ('عکس‌ها', r.photoBytes, brand.imageColor),
+      ('ویدیوها', r.videoBytes, brand.videoColor),
+      ('PDF', r.pdfBytes, brand.pdfColor),
+      ('سایر فایل‌ها', r.otherBytes, brand.otherColor),
       ('پیش‌نمایش‌ها', r.thumbnailBytes, const Color(0xFFD97706)),
       ('دیتابیس', r.databaseBytes, scheme.primary),
       ('فایل‌های بدون رکورد', r.orphanBytes, const Color(0xFF6B7280)),
@@ -211,16 +209,17 @@ class _SettingsPageState extends State<SettingsPage> {
     return Card(
       child: Padding(padding: const EdgeInsets.all(16), child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('حجم داده‌های برنامه: ${_size(r.total)}',
+          Text('حجم داده‌های برنامه: ${Formatters.fileSize(r.total)}',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 5),
-          Text('${r.mediaCount} فایل آرشیو · ${r.clipCount} متن کلیپ‌باکس',
+          Text(JalaliFormatter.toPersianDigits(
+               '${r.mediaCount} فایل آرشیو · ${r.clipCount} متن کلیپ‌باکس'),
             style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 16),
           for (final entry in values) ...[
             Row(children: [
               Expanded(child: Text(entry.$1, style: Theme.of(context).textTheme.bodySmall)),
-              Text(_size(entry.$2), style: Theme.of(context).textTheme.labelSmall),
+              Text(Formatters.fileSize(entry.$2), style: Theme.of(context).textTheme.labelSmall),
             ]),
             const SizedBox(height: 5),
             ClipRRect(borderRadius: BorderRadius.circular(8),
