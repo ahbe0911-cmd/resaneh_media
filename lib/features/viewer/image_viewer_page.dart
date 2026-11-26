@@ -301,11 +301,11 @@ class _ZoomableImageState extends State<_ZoomableImage>
     _animation.stop();
     final point = _doubleTap?.localPosition ?? size.center(Offset.zero);
     const scale = 2.5;
-    final target = _zoomed ? Matrix4.identity() : Matrix4.diagonal3Values(scale, scale, 1)
-      ..setTranslationRaw(-point.dx * (scale - 1), -point.dy * (scale - 1), 0);
-    _tween = Matrix4Tween(begin: _transform.value.clone(), end: target).animate(
-      CurvedAnimation(parent: _animation, curve: Curves.easeOutCubic),
-    );
+    final target = _zoomed ? Matrix4.identity() :
+      (Matrix4.diagonal3Values(scale, scale, 1)
+        ..setTranslationRaw(-point.dx * (scale - 1), -point.dy * (scale - 1), 0));
+    _tween = Matrix4Tween(begin: _transform.value.clone(), end: target)
+      .chain(CurveTween(curve: Curves.easeOutCubic)).animate(_animation);
     HapticFeedback.selectionClick();
     _animation.forward(from: 0);
   }

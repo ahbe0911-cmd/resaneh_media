@@ -28,6 +28,8 @@ class _VideoViewerPageState extends State<VideoViewerPage>
   bool _fullscreen = false;
   bool _speedMenu = false;
   bool _background = false;
+  bool _routeCovered = false;
+  bool _pausing = false;
   bool _wasPlaying = false;
   double? _dragPosition;
   Future<void> _orientationTask = Future<void>.value();
@@ -49,9 +51,18 @@ class _VideoViewerPageState extends State<VideoViewerPage>
       _lock?.removeListener(_lockChanged);
       _lock = lock..addListener(_lockChanged);
     }
+    final covered = ModalRoute.of(context)?.isCurrent == false;
+    if (covered && !_routeCovered) {
+      _routeCovered = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _routeCovered) _pauseForPrivacy();
+      });
+    } else {
+      _routeCovered = covered;
+    }
   }
 
-  bool get _private => _background || _lock?.unlocked == false;
+  bool get _private => _background || _routeCovered || _lock?.unlocked == false;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -66,7 +77,7 @@ class _VideoViewerPageState extends State<VideoViewerPage>
   void _pauseForPrivacy() {
     _hideTimer?.cancel();
     if (_player.value.isInitialized && _player.value.isPlaying) {
-      unawaited(_runPlayer(_player.pause));
+      unawaited(_pauseSilently());
     }
     if (mounted) setState(() {
       _controls = true;
@@ -78,7 +89,7 @@ class _VideoViewerPageState extends State<VideoViewerPage>
   void _playbackChanged() {
     final playing = _player.value.isPlaying;
     if (playing && _private) {
-      unawaited(_runPlayer(_player.pause));
+      unawaited(_pauseSilently());
       return;
     }
     if (playing == _wasPlaying) return;
@@ -88,6 +99,18 @@ class _VideoViewerPageState extends State<VideoViewerPage>
     } else {
       _hideTimer?.cancel();
       if (mounted && !_controls) setState(() => _controls = true);
+    }
+  }
+
+  Future<void> _pauseSilently() async {
+    if (_pausing) return;
+    _pausing = true;
+    try {
+      await _player.pause();
+    } catch (_) {
+      // Lifecycle can race with controller disposal.
+    } finally {
+      _pausing = false;
     }
   }
 
@@ -152,7 +175,10 @@ class _VideoViewerPageState extends State<VideoViewerPage>
   }
 
   Future<void> _seekTo(double value) async {
-    if (_private) return;
+    if (_private) {
+      if (mounted) setState(() => _dragPosition = null);
+      return;
+    }
     final position = ViewerFormatters.clampPosition(
       Duration(milliseconds: value.round()), _player.value.duration,
     );

@@ -42,4 +42,26 @@ void main() {
     expect(find.text('رفع سنجاق'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('double tap zoom disables paging and a second double tap resets it', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: ImageViewerPage(
+      images: [picture('a'), picture('b')], initialIndex: 0,
+      onShare: (_) async {}, onTogglePin: (_) async => true,
+    )));
+    await tester.pumpAndSettle();
+    final center = tester.getCenter(find.byType(PageView));
+    Future<void> doubleTap() async {
+      await tester.tapAt(center);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(center);
+      await tester.pumpAndSettle();
+    }
+    await doubleTap();
+    expect(tester.widget<PageView>(find.byType(PageView)).physics,
+      isA<NeverScrollableScrollPhysics>());
+    await doubleTap();
+    expect(tester.widget<PageView>(find.byType(PageView)).physics,
+      isA<PageScrollPhysics>());
+    expect(tester.takeException(), isNull);
+  });
 }
